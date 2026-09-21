@@ -7,8 +7,7 @@ module TX #(
     input  wire       clk,
     input  wire       rst_n,
 
-    // Simple internal request interface. A future processor/UART wrapper can
-    // turn an accepted write to UART_TXDATA into a one-clock tx_start pulse.
+    // Simple internal request interface. 
     input  wire [7:0] tx_data,
     input  wire       tx_start,
 
@@ -19,23 +18,46 @@ module TX #(
 
     // Adding BAUD_RATE/2 before division rounds to the nearest whole clock.
     // With 100 MHz and 9,600 baud, this becomes 10,417 clocks per UART bit.
-    localparam integer CLKS_PER_BIT =
-        (CLK_FREQ_HZ + (BAUD_RATE / 2)) / BAUD_RATE;
+    localparam integer CLKS_PER_BIT = (CLK_FREQ_HZ + (BAUD_RATE / 2)) / BAUD_RATE;
 
-    // This first skeleton uses an active-low, synchronous reset:
-    // rst_n = 0 resets the transmitter on the next rising edge of clk.
+    reg [13:0] baud_counter; 
+    wire baud_tick ; 
+
+    assign baud_tick = tx_busy && (baud_counter == CLKS_PER_BIT - 1);
+
+
+    // BAUD COUNTER LOGIC 
     always @(posedge clk) begin
         if (!rst_n) begin
-            tx_serial <= 1'b1;  // UART is high while idle.
+            baud_counter <= 14'd0;
+        end
+        else if (!tx_busy) begin    // ie idle 
+            baud_counter <= 14'd0;
+        end 
+        else if (baud_tick) begin   // back to zero 
+            baud_counter <= 14'd0;
+        end 
+        else begin                  // otherwise increment at every clk edge 
+            baud_counter <= baud_counter + 14'd1;
+        end
+    end
+
+
+    // STATE LOGIC 
+    always @(posedge clk) begin
+        if (!rst_n) begin
+            tx_serial <= 1'b1;  // UART is high while idle.x
             tx_busy   <= 1'b0;  // No byte is being sent.
             tx_done   <= 1'b0;  // No completed-byte notification.
-        end else begin
+            baud_counter <= 14'b0; 
+
+        end 
+        
+        else begin
             // tx_done will eventually be a one-clock pulse, so its normal
             // default value is zero.
             tx_done <= 1'b0;
-
-            // Next milestone:
-            // 1. Add the baud counter here.
+           
             // 2. Accept tx_data when tx_start is high and tx_busy is low.
             // 3. Add the IDLE -> START -> DATA -> STOP states.
         end
