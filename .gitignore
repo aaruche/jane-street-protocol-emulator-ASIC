@@ -1,0 +1,85 @@
+# Jane Street processor design project
+#
+# Keep the inputs needed to reproduce the design in Git:
+#   RTL and testbenches:     *.v, *.sv, *.vhd
+#   constraints and scripts: *.sdc, *.tcl
+#   Quartus project files:   *.qpf, *.qsf, *.qdf
+#   Quartus/IP sources:      *.ip, *.qip, *.sip, *.qsys, *.sopcinfo
+#   memory contents:         *.mif, *.hex
+#
+# Generated files should go in build/ where possible.
+# -----------------------------------------------------------------------------
+# Simulation waveforms and run products
+# -----------------------------------------------------------------------------
+*.vcd
+*.fst
+*.lxt
+*.lxt2
+*.ghw
+*.wlf
+*.vpd
+*.fsdb
+*.trn
+*.vvp
+*.ucdb
+coverage.dat
+results.xml
+# Icarus Verilog / generic simulation executables
+a.out
+simv
+simv.daidir/
+csrc/
+ucli.key
+vc_hdrs.h
+# Verilator
+obj_dir/
+*.verilator_deplist.tmp
+# ModelSim / Questa
+work/
+work_lib/
+transcript
+vsim.wlf
+modelsim.ini
+# GHDL
+work-obj*.cf
+# cocotb / Python-based verification
+sim_build/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+# -----------------------------------------------------------------------------
+# Quartus-generated compilation data and reports
+# -----------------------------------------------------------------------------
+db/
+incremental_db/
+output_files/
+greybox_tmp/
+hc_output/
+.qsys_edit/
+qar_restore/
+*_sim/
+*.qdb
+*.qws
+*.qmsg
+*.smsg
+*.rpt
+*.summary
+*.done
+*.jdi
+*.pin
+*.chg
+*.eqn
+*.sdo
+# Programming files are reproducible from the tracked RTL and Quartus settings.
+*.sof
+*.pof
+*.rbf
+*.rpd
+*.jic
+*.jam
+*.jbc
+# Quartus archives are generated bundles, not source files.
+*.qar
+*.qarlog
