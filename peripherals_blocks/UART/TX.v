@@ -8,6 +8,10 @@
 
 - At every Baud_tick && posedge clk, Data/Start/Stop/parity bit is sent (when tx_start goes high in the past)
 
+- Interface rule: Assert tx_start for one clock only while tx_busy is zero.
+    A tx_start pulse occurring while busy is high will be ignored!!!
+    Holding tx_start high for too long could cause another transmission when the UART returns to IDLE.
+
 */
 `timescale 1ns/1ps
 
