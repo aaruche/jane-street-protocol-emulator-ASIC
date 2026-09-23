@@ -9,7 +9,7 @@ module RX #(
     input  wire       rx_serial,
 
     output reg  [7:0] rx_data,
-    output reg        rx_valid,
+    output reg        rx_valid,                     // high when a complete byte, including parity and stop bit, is ready.
     output reg        rx_busy,
     output reg        parity_error,
     output reg        framing_error
@@ -146,14 +146,23 @@ module RX #(
                     if (start_edge) begin           // Wait for start_edge
                         rx_buffer <= 8'b0;          // clear old frame information
                         rx_busy   <= 1'b1;          // raise rx_busy
+                        saved_parity_error <= 1'b0;
                         state     <= START;         // move to START State 
                     end 
                     end
 
-                START: begin
-                    // TODO:
-                    // Wait half a bit.
-                    //
+                START: begin        // wait half a bit period
+                    
+                    if (half_bit_tick) begin 
+                        if (!rx_sync)begin 
+                            bit_index <= 3'b0;  // start bit is 0th bit 
+                            state     <= DATA; 
+                        end 
+                        else begin 
+                            rx_busy  <= 1'b0; 
+                            state    <= IDLE; 
+                        end 
+                    end 
                     // If rx_sync is still 0:
                     //   valid start bit → move to DATA
                     //
