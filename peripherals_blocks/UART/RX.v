@@ -171,20 +171,36 @@ module RX #(
                 end
 
                 DATA: begin
-                    // TODO later:
+                    if (full_bit_tick) begin 
+
+                        rx_buffer[bit_index] <= rx_sync ; 
+                        
+                        if(bit_index == 3'd7) begin
+                            state <= PARITY; 
+                         end
+                        else begin
+                            bit_index  <= bit_index + 1'b1;
+                         end 
+                    end 
+                    
                     // At each full-bit point:
-                    //   save rx_sync into rx_buffer[bit_index]
-                    //   move through bit numbers 0 to 7
+                    // save rx_sync into rx_buffer[bit_index]
+                    // move through bit numbers 0 to 7
                 end
 
                 PARITY: begin
-                    // TODO later:
+                    if (full_bit_tick) begin
+
+                        // For even parity, ^rx_buffer is the expected parity bit.
+                        saved_parity_error <= (rx_sync != ^rx_buffer);      
+                        state <= STOP;
+                    end
                     // Sample the parity bit.
                     // Compare it with ^rx_buffer.
                 end
 
                 STOP: begin
-                    // TODO later:
+                    
                     // Check that the stop bit is 1.
                     // Copy rx_buffer into rx_data.
                     // Pulse rx_valid.
