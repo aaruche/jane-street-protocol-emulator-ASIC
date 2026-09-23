@@ -141,14 +141,14 @@ module RX #(
             case (state)
 
                 IDLE: begin
-                    // TODO:
-                    // Keep rx_busy low.
-                    // Wait for start_edge.
-                    // When found:
-                    //   clear old frame information
-                    //   raise rx_busy
-                    //   move to START
-                end
+                    rx_busy <= 1'b0;                // Keep rx_busy low
+
+                    if (start_edge) begin           // Wait for start_edge
+                        rx_buffer <= 8'b0;          // clear old frame information
+                        rx_busy   <= 1'b1;          // raise rx_busy
+                        state     <= START;         // move to START State 
+                    end 
+                    end
 
                 START: begin
                     // TODO:
