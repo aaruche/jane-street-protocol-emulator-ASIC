@@ -38,9 +38,22 @@ module RX #(
 
     reg [COUNTER_WIDTH-1:0] baud_counter;
 
-    // TODO:
-    // Create a signal for reaching half a bit.
-    // Create a signal for reaching one complete bit.
+
+    wire half_bit_tick;
+    wire full_bit_tick;
+
+    // signal for reaching half a bit.
+    assign half_bit_tick =
+        (state == START) &&                         // state = START bcus only in START state we will be using half_bit_tick to check for FALSE START 
+        (baud_counter == HALF_CLKS_PER_BIT - 1);
+
+    // signal for reaching one complete bit.
+    assign full_bit_tick =
+        ((state == DATA)   ||
+        (state == PARITY) ||
+        (state == STOP)) &&
+        (baud_counter == CLKS_PER_BIT - 1);
+
 
     // Input synchronizer
     reg rx_meta;
@@ -64,6 +77,8 @@ module RX #(
     // Create start_edge.
     // It is true when the previous synchronized value was 1
     // and the current synchronized value is 0.
+    
+    
 
     //============================================================
     // Received-frame storage
