@@ -73,11 +73,13 @@ module RX #(
         end
     end
 
-    // TODO:
-    // Create start_edge.
-    // It is true when the previous synchronized value was 1
-    // and the current synchronized value is 0.
     
+    
+    // start_edge is true when the previous synchronized value was 1
+    // and the current synchronized value is 0.
+    wire start_edge ; 
+    assign start_edge = rx_previous && (!rx_sync) ;     // rx_sync is current sync rx ip 
+                                                        // rx =rx_previous is prev sync value   
     
 
     //============================================================
