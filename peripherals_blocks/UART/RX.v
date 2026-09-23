@@ -15,10 +15,7 @@ module RX #(
     output reg        framing_error
 );
 
-    //============================================================
-    // State names
-    //============================================================
-
+    // States
     localparam [2:0] IDLE   = 3'd0;
     localparam [2:0] START  = 3'd1;
     localparam [2:0] DATA   = 3'd2;
@@ -27,10 +24,9 @@ module RX #(
 
     reg [2:0] state;
 
-    //============================================================
-    // Timing
-    //============================================================
 
+   // Timing
+   
     localparam integer CLKS_PER_BIT =
         (CLK_FREQ_HZ + (BAUD_RATE / 2)) / BAUD_RATE;
 
@@ -46,30 +42,21 @@ module RX #(
     // Create a signal for reaching half a bit.
     // Create a signal for reaching one complete bit.
 
-    //============================================================
     // Input synchronizer
-    //============================================================
-
     reg rx_meta;
     reg rx_sync;
     reg rx_previous;
 
-    // TODO:
-    // On each clock:
-    //   rx_meta     gets rx_serial
-    //   rx_sync     gets rx_meta
-    //   rx_previous gets rx_sync
-    //
-    // Reset all three to 1 because UART is high while idle.
-
     always @(posedge clk) begin
-        if (!rst_n) begin
+        if (!rst_n) begin                   
             rx_meta     <= 1'b1;
             rx_sync     <= 1'b1;
             rx_previous <= 1'b1;
         end
-        else begin
-            // TODO: synchronizer assignments
+        else begin                             // 2 FF synchroniser 
+            rx_meta     <= rx_serial ; 
+            rx_sync     <= rx_meta ; 
+            rx_previous <= rx_sync ; 
         end
     end
 
