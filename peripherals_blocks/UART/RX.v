@@ -92,7 +92,7 @@ module RX #(
 
     //============================================================
     // Baud counter
-    //============================================================
+    
 
     always @(posedge clk) begin
         if (!rst_n) begin
@@ -115,9 +115,10 @@ module RX #(
         end
     end
 
+
     //============================================================
-    // RX state controller
-    //============================================================
+
+      // RX state controller
 
     always @(posedge clk) begin
         if (!rst_n) begin
@@ -200,7 +201,20 @@ module RX #(
                 end
 
                 STOP: begin
-                    
+                    if (full_bit_tick) begin
+
+                        // Publish the completed byte.
+                        rx_data <= rx_buffer;
+
+                        // All three outputs pulse together for one clock.
+                        rx_valid      <= 1'b1;
+                        parity_error  <= saved_parity_error;
+                        framing_error <= !rx_sync;                      // checks if the stop bit is correct (ie high)
+
+                        // Reception has finished.
+                        rx_busy <= 1'b0;
+                        state   <= IDLE;
+                    end
                     // Check that the stop bit is 1.
                     // Copy rx_buffer into rx_data.
                     // Pulse rx_valid.
