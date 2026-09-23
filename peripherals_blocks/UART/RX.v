@@ -1,3 +1,99 @@
+/*
+===============================================================================
+UART RECEIVER — STATE AND DATA FLOW
+===============================================================================
+
+Frame format:
+
+    IDLE → START → DATA[0:7] → PARITY → STOP → IDLE
+
+The UART line is normally high (1). Data is received least-significant bit
+first, meaning data bit 0 arrives before data bit 7.
+
+Before entering the state machine, rx_serial passes through two storage stages.
+This synchronizes the external signal with clk and reduces the risk of
+metastability (an uncertain value when the input changes near a clock edge).
+
+STATE BEHAVIOUR
+-------------------------------------------------------------------------------
+
+IDLE:
+    - rx_busy is low.
+    - The baud counter is held at zero.
+    - Wait for a falling edge: previous RX = 1 and current RX = 0.
+    - A falling edge may indicate the beginning of a start bit.
+    - Clear information left from the previous frame.
+    - Raise rx_busy and move to START.
+
+START:
+    - Wait HALF_CLKS_PER_BIT clocks.
+    - This moves the sampling point to approximately the centre of the
+      possible start bit.
+    - If RX is still low, the start bit is valid and the receiver enters DATA.
+    - If RX is high, the low pulse was a false start, so return to IDLE.
+
+DATA:
+    - Wait CLKS_PER_BIT clocks before sampling each data bit.
+    - Store the sampled value in rx_buffer[bit_index].
+    - Receive bits in the order 0, 1, 2, ... 7.
+    - After bit 7 is stored, move to PARITY.
+
+PARITY:
+    - Wait CLKS_PER_BIT clocks and sample the parity bit.
+    - For even parity, the expected parity value is ^rx_buffer.
+    - Compare the received parity bit with the expected value.
+    - Save the comparison result and move to STOP.
+
+STOP:
+    - Wait CLKS_PER_BIT clocks and sample the stop bit.
+    - A correct stop bit is high (1).
+    - A low stop bit produces a framing error.
+    - Copy the completed rx_buffer into rx_data.
+    - Pulse rx_valid for one clock.
+    - Output parity_error and framing_error alongside rx_valid.
+    - Clear rx_busy and return to IDLE.
+
+OUTPUT MEANINGS
+-------------------------------------------------------------------------------
+
+rx_data:
+    The most recently completed eight-bit byte.
+
+rx_valid:
+    Pulses high for one clock when a complete frame has been received.
+
+rx_busy:
+    High while the receiver is processing a frame.
+
+parity_error:
+    High alongside rx_valid when the received parity bit does not match the
+    expected even-parity value.
+
+framing_error:
+    High alongside rx_valid when the received stop bit is not high.
+
+A received byte should normally be accepted only when:
+
+    rx_valid == 1
+    parity_error == 0
+    framing_error == 0
+
+TIMING EXAMPLE — 10 CLOCKS PER UART BIT
+-------------------------------------------------------------------------------
+
+    Falling edge detected : clock 0
+    Check start bit       : clock 5
+    Sample data bit 0     : clock 15
+    Sample data bit 1     : clock 25
+    ...
+    Sample data bit 7     : clock 85
+    Sample parity         : clock 95
+    Sample stop           : clock 105
+
+The receiver samples near the centre of each UART bit because that is where
+the signal is least likely to be changing.
+===============================================================================
+*/
 `timescale 1ns/1ps
 
 module RX #(
@@ -93,14 +189,47 @@ module RX #(
     //============================================================
     // Baud counter
     
-
     always @(posedge clk) begin
         if (!rst_n) begin
             baud_counter <= {COUNTER_WIDTH{1'b0}};
         end
         else begin
-            // TODO:
-            //
+            case (state)
+
+                IDLE: begin
+                    // There is no frame to measure yet.
+                    baud_counter <= {COUNTER_WIDTH{1'b0}};
+                end
+
+                START: begin
+                    // Measure only half a bit so we can check
+                    // the centre of the possible start bit.
+                    if (half_bit_tick)
+                        baud_counter <= {COUNTER_WIDTH{1'b0}};
+                    else
+                        baud_counter <= baud_counter + 1'b1;
+                end
+
+                DATA,
+                PARITY,
+                STOP: begin
+                    // Move from the centre of one UART bit
+                    // to the centre of the following bit.
+                    if (full_bit_tick)
+                        baud_counter <= {COUNTER_WIDTH{1'b0}};
+                    else
+                        baud_counter <= baud_counter + 1'b1;
+                end
+
+                default: begin
+                    baud_counter <= {COUNTER_WIDTH{1'b0}};
+                end
+
+            endcase
+        end
+    end
+   
+           
             // IDLE:
             //   keep the counter at zero
             //
@@ -112,8 +241,7 @@ module RX #(
             //
             // When the required time is reached:
             //   return the counter to zero
-        end
-    end
+    
 
 
     //============================================================
