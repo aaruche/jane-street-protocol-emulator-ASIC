@@ -1,7 +1,8 @@
 # Block interfaces: first RTL blocks
 
-> **Status:** v1 for `pe_fifo` and `pe_imem` (ISA-independent, ready to code).
-> §3 (engine ↔ shifter) is a **draft** until `isa.md` is frozen at G0.
+> **Status:** v1 for `pe_fifo`, `pe_imem` and `pe_host_spi` (ISA-independent,
+> ready to code). §3 (engine ↔ shifter) and §7 (`pe_ctrl` boundary) are
+> **drafts** until `isa.md` and `host_protocol.md` are frozen at G0.
 > This file is the contract: the RTL author and the test author both work
 > **only from this text**. If something here is ambiguous, fix the text first
 > (and tell your partner), then the code. Boundaries: [`../../CLAUDE.md`](../../CLAUDE.md) §3.
@@ -187,18 +188,22 @@ only**; fix names, widths and exact semantics once `isa.md` is frozen.
 
 ## 4. Work split
 
-| When | Person 1 | Person 2 |
-|---|---|---|
-| **Now** (Weeks 1–2) | `pe_fifo` RTL + SBY proof | `pe_imem` RTL + Yosys area numbers |
-| **Now** (Weeks 1–2) | cocotb test for **`pe_imem`** | cocotb test for **`pe_fifo`** |
-| **After G0** (Weeks 3–4) | `pe_engine`: PC, next-PC mux, decode, condition mux, delay counter, stall logic, clock enable. G1 subset: SET, JMP, WAIT, delay, CTRL HALT | `pe_shifter` (OSR/ISR, bit counts, direction) with its own unit tests |
-| **Weeks 5–6** | Engine integration and review | IN / OUT / PUSH / PULL wired into the engine with Person 1 |
+| When | Person 1 | Person 2 | Person 3 (host interface) |
+|---|---|---|---|
+| **Now** (Weeks 1–2) | `pe_fifo` RTL + SBY proof | `pe_imem` RTL + Yosys area numbers | Finalize [`host_protocol.md`](host_protocol.md); `pe_host_spi` RTL (§6) |
+| **Now** (Weeks 1–2) | cocotb test for **`pe_imem`** | cocotb test for **`pe_fifo`** | cocotb SPI-master driver + `pe_host_spi` loopback test |
+| **After G0** (Weeks 3–4) | `pe_engine`: PC, next-PC mux, decode, condition mux, delay counter, stall logic, clock enable. G1 subset: SET, JMP, WAIT, delay, CTRL HALT | `pe_shifter` (OSR/ISR, bit counts, direction) with its own unit tests | `sw/host/protocol.py`; `pe_ctrl` (§7) with the real FIFO/imem; top-level load-and-run test for G1 |
+| **Weeks 5–6** | Engine integration and review | IN / OUT / PUSH / PULL wired into the engine with Person 1 | HPS loader tool on the DE1-SoC (ROADMAP §5.4, S4) |
 
-Each person writes the RTL for one block and the **test for the other's**,
-working only from this document. A test written by someone else doesn't share
-the RTL author's assumptions, so misreadings of the spec show up as failures.
-Meanwhile the third teammate writes the Python reference model from `isa.md`;
-the engine's lockstep tests need it.
+Persons 1 and 2 each write the RTL for one block and the **test for the
+other's**, working only from this document. A test written by someone else
+doesn't share the RTL author's assumptions, so misreadings of the spec show up
+as failures. Person 3 has no partner block yet; ask Person 1 or 2 to review
+the `pe_host_spi` test against §6.
+
+**Still to assign at G0:** the Python reference model from `isa.md`. It must
+be written by someone other than the engine author (Person 1), so Person 2 or
+Person 3. The engine's lockstep tests need it by Week 3.
 
 ---
 
@@ -214,3 +219,150 @@ the engine's lockstep tests need it.
    caught and its counterexample inspected.
 5. Pull request reviewed by the partner; any AI-assisted commit is tagged
    "(ai assisted)".
+
+---
+
+## 6. `pe_host_spi`: SPI-slave receiver (host loader, physical layer)
+
+Owner: Person 3. This block **only moves bytes**; it never interprets them
+(that is `pe_ctrl`, §7). Pads per the CLAUDE.md §3 pin map: `ui_in[0]` SCLK,
+`ui_in[1]` CS_N, `ui_in[2]` MOSI, `uo_out[0]` MISO. Command bytes and framing
+are defined in [`host_protocol.md`](host_protocol.md).
+
+```verilog
+module pe_host_spi (
+    input  wire       clk,
+    input  wire       rst_n,         // synchronous, active low
+
+    // Raw pads, asynchronous to clk: synchronized ONLY inside this module
+    input  wire       sclk_pad,
+    input  wire       cs_n_pad,
+    input  wire       mosi_pad,
+    output reg        miso,          // straight from a flop; 0 while CS_N is high
+
+    // Byte interface to pe_ctrl (clk domain)
+    output reg        frame_start,   // 1-cycle pulse: CS_N fell
+    output reg        frame_end,     // 1-cycle pulse: CS_N rose (complete or aborted)
+    output reg  [7:0] rx_byte,       // last complete MOSI byte (valid from the rx_valid cycle on)
+    output reg        rx_valid,      // 1-cycle pulse: rx_byte just updated
+    input  wire [7:0] tx_byte        // sampled when frame_start or rx_valid is high
+);
+```
+
+### How it works, and why
+
+- **SCLK is data, not a clock** (CLAUDE.md §3: one clock domain). Each pad
+  goes through a 2-FF synchronizer, plus one more register to detect edges
+  (`sclk_rise = sclk_s & ~sclk_prev`). This is the same pattern as
+  `peripherals_blocks/UART/RX.v` (its 2-FF synchronizer and `start_edge`).
+- **SCLK, CS_N and MOSI get the same synchronizer depth,** so their delayed
+  copies stay aligned. In mode 0 the host changes MOSI on falling edges, so MOSI
+  is stable around every rising edge. Sampling the *synchronized* MOSI in the
+  cycle the *synchronized* SCLK rise is detected therefore captures the right bit.
+- **Detection lag:** the chip notices any pad edge about 2–3 clk after it
+  happens. Every timing rule below follows from that.
+
+### What happens on each host event
+
+| Host does | Chip does (≈ 3 clk later) |
+|---|---|
+| CS_N falls | `frame_start` pulses; `tx_byte` is sampled (byte 0 of MISO); `miso` = its bit 7 |
+| SCLK rising edge *k* of a byte (k = 1…8) | Shift the synchronized MOSI bit into the RX shift register, **and** move `miso` to the next bit |
+| … after rising edge 8 | `rx_byte` updated, `rx_valid` pulses; `tx_byte` is sampled in that same cycle and its bit 7 goes on `miso` |
+| SCLK falling edge | Nothing |
+| CS_N rises (anywhere, even mid-byte) | `frame_end` pulses; bit counter reset; partial byte discarded; `miso` = 0 |
+
+**Why MISO changes after the *rising* edge, not the falling edge.** At the
+maximum rate (SCLK = clk/8) each half-period is only 4 clk.
+- If MISO changed on the *detected falling* edge, the new bit would appear
+  about 3 clk after the falling edge. That is right when the host samples on
+  the next rising edge, leaving 0–1 clk of margin.
+- Changing it on the *detected rising* edge moves it about 3 clk after the edge
+  where the host just captured the old bit. The new bit then sits stable for
+  about 5 clk before the next rising edge.
+
+Both are legal in mode 0, where the host only cares that MISO is stable at the
+rising edge, but only the rising-edge choice has real margin.
+
+**Byte-boundary contract with `pe_ctrl`:** `tx_byte` must hold the correct next
+MISO byte in the cycle `frame_start` pulses (byte 0, proposed to be STATUS)
+and in every cycle `rx_valid` pulses (the byte after the one just received).
+`rx_byte` is already valid in that `rx_valid` cycle, so `pe_ctrl` may compute
+`tx_byte` combinationally from it, or use the protocol's turnaround byte to
+register it (see `host_protocol.md` §3).
+
+### Host timing requirements
+
+`t_clk` is the core clock period (40 ns at 25 MHz).
+
+| Parameter | Minimum | At 25 MHz |
+|---|---|---|
+| SCLK high time | 4 t_clk | 160 ns |
+| SCLK low time | 4 t_clk | 160 ns (so SCLK ≤ 3.125 MHz) |
+| CS_N fall → first SCLK rising edge | 8 t_clk | 320 ns |
+| Last SCLK falling edge → CS_N rise | 4 t_clk | 160 ns |
+| CS_N high between frames | 8 t_clk | 320 ns |
+
+The chip guarantees that MISO is stable at every host sampling edge when these
+are met. Verify these numbers in simulation (below) before freezing them in
+`host_protocol.md`.
+
+### Implementation hints (author's choice)
+
+About 40 flops: 3 × 3 sync/edge registers, a 3-bit bit counter, an 8-bit RX
+shift register, an 8-bit TX shift register, and the output flops. No FSM
+needed beyond "in frame / not in frame". Nothing survives CS_N high.
+
+### Test checklist (`test/unit/pe_host_spi/`)
+
+The test needs a **cocotb SPI-master driver**: an async function such as
+`spi_xfer(dut, mosi_bytes, half_period_ns) -> miso_bytes` that toggles
+`sclk_pad`, `cs_n_pad` and `mosi_pad` with `Timer`s and samples `miso` at each
+rising edge, exactly like a real host. For the loopback tests, let the test
+drive `tx_byte` (e.g. echo the previous `rx_byte`).
+
+- [ ] Bytes in = `rx_byte` sequence; `rx_valid` count equals bytes sent.
+- [ ] MISO bytes = the `tx_byte` values presented at `frame_start` / `rx_valid`.
+- [ ] SCLK half-period **not** a multiple of `t_clk` (e.g. 173 ns with 40 ns clk) and a random start phase, repeated with several seeds.
+- [ ] SCLK exactly at the maximum rate from the table above.
+- [ ] **Timing check:** `miso` does not change within ±1 t_clk of any SCLK rising edge.
+- [ ] CS_N raised mid-byte: no `rx_valid`, `frame_end` pulses, next frame works normally.
+- [ ] Back-to-back frames with the minimum CS_N high time.
+- [ ] `miso = 0` whenever CS_N is high, including after reset.
+
+---
+
+## 7. `pe_ctrl` boundary (draft)
+
+Owner: Person 3. `pe_ctrl` interprets the bytes from §6 according to
+[`host_protocol.md`](host_protocol.md) and holds the host-visible registers
+from [diagram 03](../diagrams/03_engine_state_and_regs.svg). The **engine**
+rows are a draft: agree on them with Person 1 when the engine interface is
+defined at G0. Names below are suggestions.
+
+| Neighbor | Signal | Dir (from `pe_ctrl`) | Width | Meaning |
+|---|---|---|---|---|
+| `pe_host_spi` | `frame_start`, `frame_end`, `rx_byte`, `rx_valid` | in | 1, 1, 8, 1 | §6 |
+| | `tx_byte` | out | 8 | §6 byte-boundary contract |
+| `pe_imem` | `imem_we`, `imem_waddr`, `imem_wdata` | out | 1, AW, 16 | Write port (§2). **Only while halted.** |
+| | `host_raddr` | out | AW | Goes to the top-level read mux: `raddr = eng_active ? pc : host_raddr` |
+| | `imem_rdata` | in | 16 | Shared read data |
+| TX FIFO | `txf_push`, `txf_push_data` | out | 1, 8 | PUSH_TX bytes |
+| | `txf_full`, `txf_overflow`, `txf_level` | in | 1, 1, 4 | `txf_overflow` is latched into ERROR |
+| RX FIFO | `rxf_pop` | out | 1 | POP_RX: pop in the same cycle the byte is handed to `tx_byte` (show-ahead makes this work) |
+| | `rxf_pop_data`, `rxf_empty`, `rxf_underflow`, `rxf_level` | in | 8, 1, 1, 4 | `rxf_underflow` is latched into ERROR |
+| Engine *(draft)* | `eng_run`, `eng_halt`, `eng_step`, `eng_soft_reset` | out | 1 each | 1-cycle pulses from CTRL writes |
+| | `cfg_clkdiv`, `cfg_start_pc`, `cfg_out_base`, `cfg_out_cnt`, `cfg_set_base`, `cfg_set_cnt`, `cfg_in_base`, `cfg_jmp_pin`, `cfg_od_mask`, `cfg_shift_dir` | out | 16, AW, 4, 4, 4, 4, 4, 4, 8, 2 | Config registers (writable only while halted) |
+| | `eng_running`, `eng_halted`, `eng_pc`, `eng_timeout`, `eng_attn`, `eng_attn_code`, `eng_active` | in | 1, 1, AW, 1, 1, 8, 1 | STATUS / PC / ATTN_CODE sources |
+| Top level → pads | `running`, `attn` | out | 1, 1 | `uo_out[1]`, `uo_out[2]` |
+
+Rules `pe_ctrl` must enforce (details in `host_protocol.md` §5):
+- `imem_we` is **never** high while `eng_running`. The write is dropped and
+  `WR_WHILE_RUN` is set. This becomes a top-level formal property.
+- "W (halted)" config registers ignore writes while running.
+- All command state resets on `frame_end`; an incomplete command has no effect.
+
+**Testing before the engine exists:** instantiate `pe_host_spi` + `pe_ctrl` +
+real `pe_fifo` ×2 + `pe_imem` in a small test wrapper. Drive the engine inputs
+(`eng_running`, …) from Python as a fake engine, and check the `eng_*` pulses
+and `cfg_*` values the host commands produce.
