@@ -83,3 +83,12 @@ qar_restore/
 # Quartus archives are generated bundles, not source files.
 *.qar
 *.qarlog
+# -----------------------------------------------------------------------------
+# Build outputs (formal, ASIC flow)
+# -----------------------------------------------------------------------------
+# SymbiYosys work dirs and other generated files (see CLAUDE.md §8)
+build/
+# LibreLane / Tiny Tapeout local hardening runs
+runs/
+# Local copy of TinyTapeout/tt-support-tools (created by the devcontainer)
+/tt/
