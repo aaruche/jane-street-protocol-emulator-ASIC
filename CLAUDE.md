@@ -20,6 +20,9 @@ satisfactory, well-verified work — **not** maximum features.
 **Status:** pre-RTL. Spec phase. See [`docs/ROADMAP.md`](docs/ROADMAP.md) for
 the schedule and gates, [`docs/spec/`](docs/spec/) for specs, and
 [`docs/diagrams/`](docs/diagrams/) for block diagrams (all v0 / provisional).
+The first RTL blocks (`pe_fifo`, `pe_imem`) are specified in
+[`docs/spec/block_interfaces.md`](docs/spec/block_interfaces.md); code them
+against that contract.
 
 ## 2. Hard constraints (from the challenge and Tiny Tapeout)
 
@@ -119,6 +122,7 @@ src/                    synthesizable RTL only; project.v = tt_um_* pin mapping
   config.json           LibreLane config from the template
 test/                   cocotb (template Makefile, tb.v, test_*.py)
   model/                Python reference model (ISA interpreter) — the golden
+  unit/<block>/         block-level cocotb tests (own Makefile per block)
 formal/                 SymbiYosys .sby files (+ formal-only wrappers)
 sw/asm/                 Python assembler
 sw/firmware/            protocol programs (UART, SPI, I2C, ...)

@@ -82,9 +82,17 @@ to the other two teammates, not when the code is "mostly done".
   inject a bug, and read the counterexample trace.
 - **A:** replace `docs/spec/isa_v0_strawman.md` with `docs/spec/isa.md`
   (encoding, per-instruction cycle count, pin-update and sample points,
-  behavior when stalled), `docs/spec/host_protocol.md`, and a hand trace of a
-  10-instruction pulse program.
+  behavior when stalled) and a hand trace of a 10-instruction pulse program.
 - **B + A:** Python model skeleton that runs that trace.
+- **RTL warm-up (two people, ISA-independent):** `pe_fifo` and `pe_imem` per
+  [`spec/block_interfaces.md`](spec/block_interfaces.md). Each person writes
+  one block's RTL and the cocotb test for the **other** block; FIFO gets the
+  first SBY proof; imem gets the first Yosys area numbers.
+- **Person 3 (host interface):** finalize the skeleton
+  [`spec/host_protocol.md`](spec/host_protocol.md) (command bytes, register
+  bits, error rules); build `pe_host_spi` and a cocotb SPI-master driver per
+  [`spec/block_interfaces.md`](spec/block_interfaces.md) §6. Learn from the
+  2-FF synchronizer and edge detection in `peripherals_blocks/UART/RX.v`.
 - **Board owner:** S1 and the IT question in S2 (see §5.4).
 
 **G0 (Oct 11):** everyone has run a cocotb test and an SBY proof (pass and
@@ -95,8 +103,15 @@ reviewed by all three.
 
 - Engine subset: `SET`, `JMP` (unconditional + 1–2 conditions), delay field,
   `WAIT pin`, `HALT`; program memory; PC.
-- SPI-slave loader: imem write/readback, run, halt, single-step, status.
-- Assembler v0 (`sw/asm/`), `sw/host/protocol.py` (command encoding).
+- Engine split (one owner per file, see
+  [`spec/block_interfaces.md`](spec/block_interfaces.md) §3–4): Person 1 owns
+  `pe_engine` (PC, decode, next-PC, stall, delay); Person 2 owns `pe_shifter`
+  (OSR/ISR), integrated at G2. Freeze the seam signal table at G0.
+- SPI-slave loader (Person 3): `pe_ctrl` per
+  [`spec/block_interfaces.md`](spec/block_interfaces.md) §7 (imem
+  write/readback, run, halt, single-step, status, FIFO push/pop), tested with
+  the real `pe_fifo`/`pe_imem` and a fake engine until the engine is ready.
+- Assembler v0 (`sw/asm/`); `sw/host/protocol.py` (command encoding, Person 3).
 - cocotb: host driver that uses `protocol.py`; lockstep compare of PC and pins
   against the model every cycle.
 - First full GDS run of the real design; first `pd_log.md` entry with measured
