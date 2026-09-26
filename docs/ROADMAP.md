@@ -85,6 +85,10 @@ to the other two teammates, not when the code is "mostly done".
   behavior when stalled), `docs/spec/host_protocol.md`, and a hand trace of a
   10-instruction pulse program.
 - **B + A:** Python model skeleton that runs that trace.
+- **RTL warm-up (two people, ISA-independent):** `pe_fifo` and `pe_imem` per
+  [`spec/block_interfaces.md`](spec/block_interfaces.md). Each person writes
+  one block's RTL and the cocotb test for the **other** block; FIFO gets the
+  first SBY proof; imem gets the first Yosys area numbers.
 - **Board owner:** S1 and the IT question in S2 (see §5.4).
 
 **G0 (Oct 11):** everyone has run a cocotb test and an SBY proof (pass and
@@ -95,6 +99,10 @@ reviewed by all three.
 
 - Engine subset: `SET`, `JMP` (unconditional + 1–2 conditions), delay field,
   `WAIT pin`, `HALT`; program memory; PC.
+- Engine split (one owner per file, see
+  [`spec/block_interfaces.md`](spec/block_interfaces.md) §3–4): Person 1 owns
+  `pe_engine` (PC, decode, next-PC, stall, delay); Person 2 owns `pe_shifter`
+  (OSR/ISR), integrated at G2. Freeze the seam signal table at G0.
 - SPI-slave loader: imem write/readback, run, halt, single-step, status.
 - Assembler v0 (`sw/asm/`), `sw/host/protocol.py` (command encoding).
 - cocotb: host driver that uses `protocol.py`; lockstep compare of PC and pins
