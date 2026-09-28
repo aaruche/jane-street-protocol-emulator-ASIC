@@ -2,6 +2,16 @@
 - First Word - Fall Ahead :he engine is single-cycle (decision D1). PULL must read the byte and pop it in the same cycle. 
   A FIFO that presents data one cycle after pop would add a hidden cycle to every PULL and break the timing rules 
 
+- Burst absorption. The depth (8) is a bet about how long the host can be late. Depth ≥ (host service latency × byte rate)
+  is the sizing intuition.
+
+- Flow control through the flags. empty and full are the handshake:
+            PULL on empty stalls the engine.
+            PUSH on full stalls the engine.
+            level feeds the status register and ATTN, so the host knows when to service the FIFOs.
+
+- Clean error reporting. overflow and underflow pulses turn "the host was too slow" or "firmware misbehaved" into visible 
+  status bits instead of silent data loss.
   
 */
 
