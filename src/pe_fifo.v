@@ -49,7 +49,15 @@ module pe_fifo #(
     reg [PTR_W-1:0] rd_ptr;
     reg [PTR_W-1:0] wr_ptr;
 
-    // TODO: empty, full, level, pop_data (combinational, from the pointers)
+    // Comb Read 
+    assign pop_data = fifo[rd_ptr[PTR_W-2:0]] ; // slicing off the MSB of rd_ptr cus thats the lap marker 
+
+    // DEPTH must be a power of 2. The pointers wrap mod 2^PTR_W, so wr_ptr - rd_ptr
+    // is the true occupancy only then, and PTR_W == LEVEL_W so the widths match.
+    assign level = wr_ptr - rd_ptr;
+    assign empty    = (rd_ptr == wr_ptr) ;
+    assign full     = (rd_ptr[PTR_W-1] != wr_ptr[PTR_W-1]) && (rd_ptr[PTR_W-2:0] == wr_ptr[PTR_W-2:0]) ;
+    
     // TODO: accepted push / accepted pop wires
     // TODO: storage write block (no reset)
 
