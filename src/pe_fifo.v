@@ -22,7 +22,8 @@
   could show a false error to the host.
 
 - Accepted Push/Pop : An operation is only "accepted" or "valid" if the action is requested and the FIFO is capable of executing it.
-
+  Accepted push means the host wants to push, and the FIFO isn't full.
+  Accepted pop means the engine wants to pop, and the FIFO isn't empty.
 */
 
 module pe_fifo #(
@@ -58,18 +59,23 @@ module pe_fifo #(
 
     // DEPTH must be a power of 2. The pointers wrap mod 2^PTR_W, so wr_ptr - rd_ptr
     // is the true occupancy only then, and PTR_W == LEVEL_W so the widths match.
-    assign level = wr_ptr - rd_ptr;
+    assign level    = wr_ptr - rd_ptr;
     assign empty    = (rd_ptr == wr_ptr) ;
     assign full     = (rd_ptr[PTR_W-1] != wr_ptr[PTR_W-1]) && (rd_ptr[PTR_W-2:0] == wr_ptr[PTR_W-2:0]) ;
     
     // TODO: accepted push / accepted pop wires
-    
-    wire push_accepted = push && !full ;
-    wire pop_accepted  = pop && !empty ;    
+    wire pop_accepted; 
+    wire push_accepted;
+    assign push_accepted = push && !full ;
+    assign pop_accepted  = pop && !empty ;    
 
     // TODO: storage write block (no reset)
 
     always @(posedge clk) begin
+
+        overflow  <= push && full;    
+        underflow <= pop && empty; 
+
         if (!rst_n) begin
             // The array is not reset.
             rd_ptr    <= {PTR_W{1'b0}};
@@ -78,7 +84,18 @@ module pe_fifo #(
             underflow <= 1'b0;
         end
         // TODO: else branch: pointer increments and the two pulses
-    end
+        else begin 
+            if (push_accepted) begin 
+              fifo[wr_ptr[PTR_W-2:0]] <= push_data ; 
+              wr_ptr <= wr_ptr + 1'b1 ; 
+              end  
+
+            if (pop_accepted) begin 
+              rd_ptr <= rd_ptr + 1'b1 ;
+              end 
+        end
+    end 
+
 
 endmodule
 
