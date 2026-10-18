@@ -20,6 +20,9 @@
   empty = 1 means "stall; ignore whatever pop_data shows" because it is garbage (the array is never reset).
   Overflow and Underflow under reset: they are flops, so they are reset to 0, otherwise the first cycle after reset
   could show a false error to the host.
+
+- Accepted Push/Pop : An operation is only "accepted" or "valid" if the action is requested and the FIFO is capable of executing it.
+
 */
 
 module pe_fifo #(
@@ -32,9 +35,10 @@ module pe_fifo #(
 
     input  wire               push,
     input  wire [WIDTH-1:0]   push_data,
+    
     input  wire               pop,
-
     output wire [WIDTH-1:0]   pop_data,    // valid whenever !empty (show-ahead)
+    
     output wire               full,
     output wire               empty,
     output wire [LEVEL_W-1:0] level,       // 0 .. DEPTH
@@ -59,6 +63,10 @@ module pe_fifo #(
     assign full     = (rd_ptr[PTR_W-1] != wr_ptr[PTR_W-1]) && (rd_ptr[PTR_W-2:0] == wr_ptr[PTR_W-2:0]) ;
     
     // TODO: accepted push / accepted pop wires
+    
+    wire push_accepted = push && !full ;
+    wire pop_accepted  = pop && !empty ;    
+
     // TODO: storage write block (no reset)
 
     always @(posedge clk) begin
