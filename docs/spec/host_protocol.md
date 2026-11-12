@@ -1,10 +1,10 @@
 # Host protocol (SPI loader)
 
-> **Status: skeleton.** Owner: **Person 3 (host interface)**. Items marked
-> **Proposed** are recommendations; items marked **TO DECIDE** are yours to
-> fill in. Finalize this file and get it reviewed by the other two before
-> **G0 (Oct 11)**. After that it is the contract for `pe_ctrl`,
-> `sw/host/protocol.py`, the cocotb driver, and the HPS tool.
+> **Status: skeleton.** Claude drafts the **TO DECIDE** items; the developer
+> reviews them and signs off (spec review is part of verification). Items
+> marked **Proposed** are recommendations. Sign off by **Nov 22** (ROADMAP §4).
+> After that it is the contract for `pe_ctrl`, `sw/host/protocol.py`, the UVM
+> SPI host agent and the thin cocotb test.
 >
 > Related: hardware contract in [`block_interfaces.md`](block_interfaces.md)
 > §6–7, register list in [diagram 03](../diagrams/03_engine_state_and_regs.svg),
@@ -14,8 +14,8 @@ Who speaks this protocol:
 
 | Host | Where | When |
 |---|---|---|
-| cocotb SPI-master driver | simulation | from Week 2 |
-| HPS loader tool (C, bit-bangs PIO lines) | DE1-SoC FPGA | from Week 5 (ROADMAP §5.4, S4) |
+| UVM SPI host agent (developer) | simulation, EDA Playground | from Nov 30 |
+| Thin cocotb SPI driver | simulation, Tiny Tapeout CI | with the top-level test |
 | Tiny Tapeout demo board (MicroPython) | real silicon | after tape-out |
 
 ---
@@ -123,15 +123,16 @@ Contents: `WR_WHILE_RUN`, `BAD_CMD`, `TX_OVERFLOW`, `RX_UNDERFLOW`, and possibly
 | SOFT_RESET | PC = START_PC. **TO DECIDE:** does it also clear the FIFOs, TIMEOUT, ATTN, ERROR? | |
 | Reading or writing an unused register address (0x06–07, >0x0F) | **TO DECIDE:** read 0x00 / ignore write? | `BAD_CMD`? |
 
-## 6. Worked example (TODO for Person 3)
+## 6. Worked example (TODO)
 
 Once §3–4 are decided, write the complete byte sequence for loading and running
 the UART TX example from [`isa_v0_strawman.md`](isa_v0_strawman.md): halt,
 set CLKDIV, pin bases, SHIFT_CFG, WRITE_IMEM the 9 words in one frame,
 READ_IMEM to verify, RUN, PUSH_TX "Hi", poll STATUS. This example becomes the
-first test in `sw/host/protocol.py` and the G1 top-level test.
+first test in `sw/host/protocol.py`, the first UVM host-loader sequence, and the
+G1 top-level test.
 
-## 7. Open questions (tick off before G0)
+## 7. Open questions (tick off before sign-off)
 
 - [ ] Command byte values chosen (no 0x00 / 0xFF)
 - [ ] Turnaround byte for reads: yes / no, with the reason written in §3
@@ -140,4 +141,4 @@ first test in `sw/host/protocol.py` and the G1 top-level test.
 - [ ] All TO DECIDE rows in §5 resolved
 - [ ] Host timing numbers confirmed by the `pe_host_spi` simulation and copied into §1
 - [ ] Worked example (§6) written
-- [ ] Reviewed by Person 1 and Person 2
+- [ ] Reviewed and signed off by the developer

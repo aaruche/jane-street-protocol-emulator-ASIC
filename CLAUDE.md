@@ -2,7 +2,7 @@
 
 Guidance for anyone (human or Claude) working in this repository. Read this
 before writing RTL, tests or firmware. The architectural boundaries in §3 and
-§4 were agreed by the team; **crossing one needs a team decision**, recorded in
+§4 are decided; **crossing one needs an explicit decision**, recorded in
 [`docs/ROADMAP.md`](docs/ROADMAP.md) §2 (Decision log).
 
 ## 1. What this project is
@@ -13,27 +13,36 @@ is designed for driving/sampling pins with exact cycle timing, so that UART, SPI
 and I2C are implemented **in firmware** and new protocols can be loaded after
 fabrication. Inspired by RP2040 PIO and TI PRU.
 
-Team: three grad students (Verilog / architecture / embedded C background;
-learning cocotb, formal and physical design on this project). The goal is
-satisfactory, well-verified work — **not** maximum features.
+**Solo project, verification-first.** One developer (Verilog / architecture /
+embedded C background). The main learning goal is **industry-style
+verification**: SystemVerilog UVM environments, SVA, functional coverage and
+coverage closure, formal, debugging failures, and judging when a block is
+verified (sign-off). So:
 
-**Status:** pre-RTL. Spec phase. See [`docs/ROADMAP.md`](docs/ROADMAP.md) for
-the schedule and gates, [`docs/spec/`](docs/spec/) for specs, and
-[`docs/diagrams/`](docs/diagrams/) for block diagrams (all v0 / provisional).
-The first RTL blocks (`pe_fifo`, `pe_imem`) are specified in
-[`docs/spec/block_interfaces.md`](docs/spec/block_interfaces.md); code them
-against that contract.
+- **Claude drafts most RTL from the spec.** The developer writes only short
+  **concept cores** (§10) inside a few blocks, plus `pe_fifo`, which is
+  already written.
+- **The developer owns all verification.**
+
+The goal is satisfactory, well-verified work, **not** maximum features.
+
+**Status:** spec done (v0); `pe_fifo` RTL written and entering verification.
+See [`docs/ROADMAP.md`](docs/ROADMAP.md) for the schedule and gates,
+[`docs/spec/`](docs/spec/) for specs (block contracts in
+[`docs/spec/block_interfaces.md`](docs/spec/block_interfaces.md)),
+[`verif/`](verif/) for verification plans and testbenches, and
+[`docs/diagrams/`](docs/diagrams/) for block diagrams.
 
 ## 2. Hard constraints (from the challenge and Tiny Tapeout)
 
 | Item | Constraint |
 |---|---|
 | Process | IHP SG13CMOS5L (130 nm) via Tiny Tapeout |
-| Template | [`TinyTapeout/ttihp-verilog-template`](https://github.com/TinyTapeout/ttihp-verilog-template/tree/cmos5l) branch `cmos5l`, imported at the **repo root** (Week 1 task) |
+| Template | [`TinyTapeout/ttihp-verilog-template`](https://github.com/TinyTapeout/ttihp-verilog-template/tree/cmos5l) branch `cmos5l`, imported at the **repo root** |
 | Area | `info.yaml` → `tiles: "6x4"` (24 tiles, ~0.7 mm² nominal, ~24K cells rule-of-thumb). Do not plan for 8×4 unless officially announced. |
 | Top module | `tt_um_*` (provisional name: `tt_um_aaruche_protoemu`) with the standard TT ports `ui_in`, `uo_out`, `uio_in`, `uio_out`, `uio_oe`, `ena`, `clk`, `rst_n` |
 | Sources | Every synthesizable file lives in `src/` and is listed in **both** `info.yaml` `source_files` and `test/Makefile` `PROJECT_SOURCES` |
-| Toolchain | cocotb 2.0.1 + Icarus (template-pinned); LibreLane via the template's GitHub Actions |
+| Toolchain | **Verification:** SystemVerilog UVM 1.2 + SVA + covergroups on **EDA Playground**; **SymbiYosys** (OSS CAD Suite) for formal. **CI / Tiny Tapeout:** thin cocotb 2.0.1 tests on Icarus (template-pinned, also used for gate-level sim); LibreLane via the template's GitHub Actions |
 | Deadline | Submit by **2027-01-18**; internal target **2027-01-10** |
 
 Area budget (estimates only; **replace with measured synthesis numbers at G1**):
@@ -88,8 +97,7 @@ Area budget (estimates only; **replace with measured synthesis numbers at G1**):
   first**, oversampled in the core clock domain (SCLK ≤ clk/8). No UART loader.
 - Host command set: imem write / imem read, control (run / halt / single-step /
   soft reset), status (running, halted, PC, error flags, FIFO levels), TX-FIFO
-  push, RX-FIFO pop. Exact encoding: `docs/spec/host_protocol.md` (G0
-  deliverable).
+  push, RX-FIFO pop. Exact encoding: `docs/spec/host_protocol.md`.
 
 **Pins**
 - `uio[7:0]` = 8 bidirectional protocol pins, each with output value, output
@@ -106,39 +114,44 @@ Area budget (estimates only; **replace with measured synthesis numbers at G1**):
 | `uo[7:3]` | Engine output-only pins `OUT0`–`OUT4` |
 | `uio[7:0]` | Engine bidirectional protocol pins `P0`–`P7` |
 
-## 4. Out of scope (do not add without a team decision)
+## 4. Out of scope (do not add without an explicit decision)
 
 Pipelining, caches, SRAM macros, interrupts, multiple clock domains, a C
 compiler for the engine, fixed UART/SPI/I2C peripheral blocks, USB or Ethernet
-PHY-like hardware, a UART host loader, and SystemVerilog-only constructs in
-`src/`. Stretch goals (see ROADMAP) are **firmware-only** unless the team
-decides otherwise at G4.
+PHY-like hardware, a UART host loader, SystemVerilog-only constructs in
+`src/`, and the FPGA / remote-lab track (dropped, decision D13). Stretch goals
+(see ROADMAP) are **firmware-only**.
 
 ## 5. Repository layout (target)
 
 ```
-info.yaml               TT project config (tiles "6x4")          [Week 1]
-src/                    synthesizable RTL only; project.v = tt_um_* pin mapping
+info.yaml               TT project config (tiles "6x4")
+src/                    synthesizable RTL only (Verilog-2005); project.v = tt_um_* pin mapping
   config.json           LibreLane config from the template
-test/                   cocotb (template Makefile, tb.v, test_*.py)
-  model/                Python reference model (ISA interpreter) — the golden
-  unit/<block>/         block-level cocotb tests (own Makefile per block)
+verif/                  MAIN VERIFICATION WORK (see verif/README.md)
+  <block>/vplan.md      requirements → checks → coverage → tests
+  <block>/uvm/          SV/UVM testbench (interface, item, agent, scoreboard, coverage, tests)
+  <block>/sva/          SVA bind files (never inside src/)
+  <block>/bugs/         bug-injection mutants (added only at the bug-hunt step)
+  <block>/results/      run summaries (EDA Playground is not CI)
+  <block>/signoff.md    what was verified, coverage, formal, bug-hunt score
 formal/                 SymbiYosys .sby files (+ formal-only wrappers)
+test/                   thin cocotb tests for Tiny Tapeout CI (template Makefile, tb.v)
+  unit/<block>/         block-level cocotb smoke tests (own Makefile per block)
 sw/asm/                 Python assembler
 sw/firmware/            protocol programs (UART, SPI, I2C, ...)
-sw/host/                host loader library; protocol.py shared by cocotb and HPS
-fpga/de1soc/            Quartus project, FPGA top wrapper, HPS scripts
+sw/host/                host loader library (command encoding)
 docs/ROADMAP.md         schedule, gates, decision log
-docs/spec/              ISA, timing table, host protocol
+docs/spec/              ISA, timing table, host protocol, block contracts
 docs/diagrams/          Excalidraw block diagrams
 docs/reference/         datasheets and background PDFs
 docs/info.md            TT datasheet page (from template)
 peripherals_blocks/     LEARNING SANDBOX (standalone UART). Not submitted.
 ```
 
-`peripherals_blocks/` is the team's warm-up UART. **Never reference it from
-`src/`, and never copy it into `src/`**: that would violate §3 "Protocol logic".
-It may be used as a peer/checker in a testbench or FPGA loopback.
+`peripherals_blocks/` is the warm-up UART. **Never reference it from `src/`,
+and never copy it into `src/`**: that would violate §3 "Protocol logic". It may
+be used as a peer/checker in a testbench.
 
 ## 6. RTL conventions
 
@@ -152,45 +165,65 @@ It may be used as a peer/checker in a testbench or FPGA loopback.
 - No `initial` blocks or `#` delays in `src/` (formal-only code excepted, inside
   `` `ifdef FORMAL ``).
 - Explicit widths on every constant and port; sizes come from parameters.
+  Parameters with restrictions (e.g. power-of-2 depth) fail loudly at
+  elaboration when violated.
 - Comment the *why* and the interface rules (the style used in
   `peripherals_blocks/UART/TX.v` is good).
 
 ## 7. Verification conventions
 
-- **The Python model in `test/model/` is the golden reference.** It is written
-  from the spec by someone other than the RTL author, and reviewed.
-- Every ISA feature lands with: a spec update → a model update → a cocotb test
-  → the RTL change. The spec comes first.
-- Engine tests compare RTL against the model **cycle by cycle** (PC and pins),
-  not just final results.
-- Protocol tests check **edge timing** (cycles between edges, setup/sample
+- **Spec first, then plan.** Every block gets `verif/<block>/vplan.md`
+  mapping each spec requirement → how it is checked (scoreboard / SVA /
+  formal) → which coverage item proves it was exercised → which test hits it.
+  A requirement with no check, or a check with no coverage, is a hole.
+- **UVM structure** (UVM 1.2): interface with a clocking block; sequence item
+  with `rand` fields and constraints; agent (sequencer, driver, monitor);
+  scoreboard with a **reference model** that checks every DUT output every
+  cycle; coverage subscriber with covergroups; sequences; tests. Each test
+  prints its functional coverage % in `report_phase`, so results are portable
+  across simulators.
+- **Reference models are independent of the RTL author.** Claude writes most
+  RTL, so the developer writes the models (FIFO queue model, ISA model,
+  protocol monitors).
+- **SVA lives in bind files under `verif/<block>/sva/`, never in `src/`**, so
+  RTL stays Verilog-2005 and tape-out clean. Every important assertion has a
+  matching `cover property`.
+- **Formal:** SymbiYosys, immediate `assert` / `assume` / `cover` inside
+  `` `ifdef FORMAL `` with an `f_past_valid` guard for `$past`. Record
+  assumptions, depth, and whether each proof is **bounded (BMC) or unbounded
+  (prove)**.
+- **Random runs log their seed**; a failure is reproducible from its seed.
+- **Protocol tests check edge timing** (cycles between edges, setup/sample
   points), not only received bytes.
-- Random tests must log and accept a seed; a failure is reproducible from its
-  seed.
-- Formal: SymbiYosys from OSS CAD Suite, immediate `assert` / `assume` /
-  `cover` inside `` `ifdef FORMAL `` with a `f_past_valid` guard for `$past`.
-  Record for every proof: assumptions, depth, and whether it is **bounded (BMC)
-  or unbounded (prove)**.
+- **Every block ends with a bug hunt and a sign-off:** Claude adds mutants to
+  `verif/<block>/bugs/` only when the testbench is ready. The developer finds
+  them from logs and waves, records which check caught each, and strengthens
+  the testbench for any survivor. Then `signoff.md` records what was verified,
+  coverage numbers, formal results, the bug-hunt score and known limitations.
+- **EDA Playground is not CI:** save each meaningful run's summary (test,
+  seed, pass/fail, coverage %) and the playground link in
+  `verif/<block>/results/`.
 - **Never weaken an assertion, delete a test or add a waiver just to get
-  green.** Understand the counterexample first.
+  green.** Understand the failure first.
 
 ## 8. Commands
 
 Commands marked *planned* do not exist until the named milestone.
 
 ```sh
-# RTL simulation (cocotb + Icarus)                          [after Week 1]
+# UVM: run on EDA Playground (Aldec Riviera-PRO, UVM 1.2) — see verif/README.md
+# Thin cocotb tests for CI (Icarus)                         [planned: template import]
 cd test && make -B
-# Gate-level simulation (netlist from the gds workflow)     [after Week 1]
+# Gate-level simulation (netlist from the gds workflow)     [planned: template import]
 cd test && make -B GATES=yes
-# Lint                                                       [planned, G1]
+# Block smoke test
+cd test/unit/pe_fifo && make -B                           # [planned: FIFO step 2]
+# Lint
 verilator --lint-only -Wall -Isrc src/*.v --top-module tt_um_aaruche_protoemu
-# Formal (writes into build/)                                [planned, G2]
+# Formal (writes into build/)                               [planned: FIFO step 5]
 sby -f formal/pe_fifo.sby -d build/formal/pe_fifo
-# Assemble firmware                                          [planned, G1]
+# Assemble firmware                                         [planned]
 python3 sw/asm/pasm.py sw/firmware/uart_tx.pasm -o build/uart_tx.hex
-# Waveforms
-gtkwave test/tb.fst      # or surfer
 ```
 
 ## 9. Physical design rules
@@ -209,12 +242,18 @@ gtkwave test/tb.fst      # or surfer
 
 ## 10. How Claude should work in this repo
 
-- This is a **learning project**: explain and review rather than bulk-generate.
-  When asked to write RTL, keep modules small and explain the design choices.
+| Work | Who | How |
+|---|---|---|
+| Specs | Claude drafts | The developer reviews and signs off. Reviewing a spec is a verification skill. |
+| RTL | **Claude drafts** from the spec | Small modules; explain the design choices. The developer reviews each one against the spec (a design review, not a rewrite). |
+| Concept cores | **Developer writes** | Claude leaves a marked region `// >>> YOUR CODE (concept: …) <<<` with a short explanation of the concept and what the region must do. The block is not done until it is filled. Planned cores: `pe_host_spi` synchronizers + edge detection; engine stall + next-PC; `pe_pins` open-drain / output enable. |
+| Verification code (vplans, UVM components, reference models, SVA, formal properties, coverage) | **Developer writes** | Claude supplies scaffolding only (file layout, headers, run instructions), explains concepts, reviews the developer's code, and prepares bug-hunt mutants. **Claude does not write scoreboards, reference models, coverage or assertions unless explicitly asked.** |
+| Tooling (assembler, CI, template, Makefiles, diagrams) | Claude | Explain anything that affects how tests run. |
+
+Also:
 - Before crossing any boundary in §3/§4, stop and ask.
 - Spec first: if a change alters instruction behavior or timing, update
-  `docs/spec/` and the model before touching RTL.
-- Match the team's habit of marking AI-assisted work in commit messages
-  ("(ai assisted)"); a human owner reviews it.
+  `docs/spec/` before touching RTL or tests.
+- Mark AI-assisted commits with "(ai assisted)".
 - Keep diagrams in `docs/diagrams/` in sync when the architecture changes.
 - Do not modify `peripherals_blocks/` unless asked.
