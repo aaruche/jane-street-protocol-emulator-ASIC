@@ -1,7 +1,10 @@
 # Roadmap: Protocol Emulator ASIC
 
-*Replaces the earlier `Docs/astra_plan.md`. Last revised 2026-09-26.*
-Architectural boundaries and coding rules live in [`../CLAUDE.md`](../CLAUDE.md).
+*Last revised 2026-11-12: the project is now **solo and verification-first**
+(decisions D10–D13). Earlier revisions planned for three people with roles
+A/B/C and Persons 1–3; those no longer apply.*
+Architectural boundaries, coding rules and the Claude/developer division of
+labour live in [`../CLAUDE.md`](../CLAUDE.md).
 
 ---
 
@@ -10,20 +13,21 @@ Architectural boundaries and coding rules live in [`../CLAUDE.md`](../CLAUDE.md)
 **One programmable protocol engine, verified credibly, that fits 6×4 tiles on
 IHP SG13CMOS5L and runs UART, SPI and I2C purely from loaded firmware.**
 
-The central demo, on unchanged hardware (simulation, then FPGA):
+The central demo, on unchanged hardware, in simulation:
 
-> load UART firmware → demo UART → load SPI firmware → demo SPI → load I2C firmware → demo I2C
+> load UART firmware → check UART → load SPI firmware → check SPI → load I2C firmware → check I2C
 
 ### Scope
 
 | Level | Contents |
 |---|---|
 | **Baseline (must ship)** | UART 8N1 TX + RX (half-duplex: one direction at a time), e.g. 9600 and 115200 baud. SPI controller, mode 0 (modes 1–3 as firmware-only variants). I2C controller: 7-bit addressing, read/write, ACK/NACK, repeated START, clock stretching, stuck-bus timeout. SPI-slave host loader. |
-| **Stretch (firmware-only, only after G3)** | Logic-analyzer / protocol-sniffer mode, PS/2, JTAG or SWD, UART at unusual baud rates. A **2nd engine** only if G4 synthesis shows area < ~50% used. |
-| **Excluded** | USB, 10M Ethernet, CAN in hardware; pipelines, caches, SRAM macros, interrupts; UART loader; C compiler for the engine. |
+| **Stretch (only if ahead of schedule)** | UVM register-layer (RAL) model of the host register map. Firmware-only extras (protocol-sniffer mode, PS/2). |
+| **Excluded** | USB, 10M Ethernet, CAN in hardware; pipelines, caches, SRAM macros, interrupts; UART loader; C compiler for the engine; FPGA demos and the remote lab (D13). |
 
-"Satisfactory" means that each baseline item has spec, model, cocotb tests,
-FPGA evidence and a clean GDS. It does not mean more protocols.
+"Satisfactory" means that every block has a spec, a vplan, a testbench that
+reaches its coverage goals, a bug hunt and a sign-off; the system tests pass
+for all three protocols; and the GDS is clean. It does not mean more protocols.
 
 ---
 
@@ -33,258 +37,143 @@ FPGA evidence and a clean GDS. It does not mean more protocols.
 |---|---|---|---|
 | D1 | 2026-09-26 | **Single-cycle, unpipelined engine**; fixed cycles per instruction, stalls only on WAIT/PULL/PUSH | Deterministic timing is the product. No hazards means less to verify, and the model is trivially cycle-exact. |
 | D2 | 2026-09-26 | **Flip-flop program memory**, combinational read, `IMEM_DEPTH` param (target 128×16); no SRAM | An SRAM's synchronous read would force a fetch stage (breaking D1), and the SRAM integration path is a risk. |
-| D3 | 2026-09-26 | **cocotb 2.0.1 + Icarus**; **Verilator `--lint-only`** | Icarus is the template default and what the gate-level CI uses; Verilator lint is fast and strict. |
-| D4 | 2026-09-26 | **Formal with SymbiYosys** (OSS CAD Suite), immediate assertions | Free; no JasperGold license available. |
-| D5 | 2026-09-26 | **SPI-slave loader only** | One loader to verify; easy to bit-bang from the DE1-SoC HPS and from the TT demo board's microcontroller. |
+| D3 | 2026-09-26 | cocotb 2.0.1 + Icarus; Verilator `--lint-only` | Icarus is the template default and what the gate-level CI uses. *Narrowed by D12: cocotb is now only the thin CI layer.* |
+| D4 | 2026-09-26 | **Formal with SymbiYosys** (OSS CAD Suite), immediate assertions | Free; no commercial formal license available. |
+| D5 | 2026-09-26 | **SPI-slave loader only** | One loader to verify; easy to drive from a testbench and from the TT demo board's microcontroller. |
 | D6 | 2026-09-26 | **1 engine taped out**, `NUM_ENGINES` parameter | Keeps scope small but leaves a cheap upgrade path if area allows. |
-| D7 | 2026-09-26 | **DE1-SoC HPS Linux is the remote test host** | The HPS programs the FPGA and bit-bangs the loader; this teaches embedded Linux, SSH and HW-in-the-loop testing. |
-| D8 | 2026-09-26 | **Remote access via campus VPN** (Tailscale as fallback only) | Team preference; confirm with IT that the lab subnet is reachable over VPN. |
-| D9 | 2026-09-26 | Verilog-2005 (not Hardcaml / SystemVerilog) in `src/` | Team expertise; runs on every open-source tool. |
+| D7 | 2026-09-26 | ~~DE1-SoC HPS Linux is the remote test host~~ | *Superseded by D13.* |
+| D8 | 2026-09-26 | ~~Remote access via campus VPN~~ | *Superseded by D13.* |
+| D9 | 2026-09-26 | Verilog-2005 (not Hardcaml / SystemVerilog) in `src/` | Runs on every open-source tool. SystemVerilog is used in `verif/` only. |
+| D10 | 2026-11-12 | **Solo project** | The other two teammates left. Same scope (UART, SPI, I2C), same deadline. |
+| D11 | 2026-11-12 | **Verification-first division of labour:** Claude drafts most RTL from the spec; the developer writes short concept cores (host-SPI sync/edges, engine stall/next-PC, pins open-drain/OE), all reference models and all verification | The main learning goal is industry-style verification. Independent reference models also give a real check on AI-drafted RTL. |
+| D12 | 2026-11-12 | **SystemVerilog UVM 1.2 + SVA + covergroups on EDA Playground** as the main verification stack; thin cocotb tests only for Tiny Tapeout CI and gate-level sim | UVM/SVA/coverage are the industry standard. EDA Playground gives free access to a commercial simulator; Icarus cannot run UVM. |
+| D13 | 2026-11-12 | **FPGA and remote-lab (SSH) track dropped** | Solo time goes to verification; the board owner left. Simulation, formal and the GDS flow are the evidence. |
 
 Add a row whenever a boundary in `CLAUDE.md` §3/§4 changes.
 
 ---
 
-## 3. Team roles
+## 3. Working model
 
-| Who | Owns | Reviews |
-|---|---|---|
-| **A: architecture and firmware** | ISA + timing spec, engine RTL, assembler, UART/SPI/I2C firmware | B's model and timing tests |
-| **B: verification** | cocotb environment, Python reference model, formal proofs, regressions, random tests | A's instruction semantics; host-protocol corner cases |
-| **C: integration and physical** | Host SPI loader, top/pin block, TT template + CI, `pd_log.md`, Quartus/DE1-SoC top, HPS loader tool | Reset, I/O behavior, clock assumptions |
-| **Board owner (side track)** | DE1-SoC Linux, SSH, campus-VPN access, remote scripts | Never blocks a gate |
+See [`../CLAUDE.md`](../CLAUDE.md) §10 for the full table. In short:
 
-Ownership is not isolation. By G4 **everyone** must be able to: run the full
-regression, read a formal counterexample, load firmware on the FPGA, and explain
-one real timing path from the STA report.
+| Claude | Developer |
+|---|---|
+| Drafts specs and most RTL; template, CI, assembler, firmware; diagrams; scaffolding; reviews; bug-hunt mutants | Reviews specs and RTL; writes concept cores; writes **all** verification: vplans, UVM environments, reference models, SVA, formal properties, coverage closure, sign-offs |
 
-Suggested cadence: one 45-minute sync per week (demo what passed, look at one
-waveform or report together, update the gate checklist).
+Rule of thumb: whenever Claude writes a piece of RTL, the developer verifies it
+with a reference model Claude did not write.
 
 ---
 
 ## 4. Timeline and gates
 
-Weeks start on Mondays. A gate is passed when its exit condition is demonstrated
-to the other two teammates, not when the code is "mostly done".
+Done before this revision: spec v0 (ISA strawman, block contracts, host
+protocol skeleton), diagrams, `pe_fifo` RTL. The earlier gates G0–G3 are
+superseded by the gates below.
 
-### Weeks 1–2 (Sep 28 – Oct 11): Toolchain, learning, spec
+| Weeks | Claude | Developer | Gate |
+|---|---|---|---|
+| **Nov 12–22** | This restructure; import the TT template (`src/`, `test/`, `info.yaml` 6×4, CI); `pe_imem` RTL; drafts of `isa.md` v1 and final `host_protocol.md` | FIFO steps 0–4 ([`../verif/README.md`](../verif/README.md)); review both specs | **Specs signed off** |
+| **Nov 23–29** | `pe_host_spi` (with the sync/edge concept core), `pe_ctrl`, engine G1 subset (SET, JMP, WAIT, delay, HALT; with the stall/next-PC concept core), assembler | FIFO steps 5–8; `pe_imem` testbench (reuses the FIFO patterns); fill the two concept cores | **FIFO signed off** |
+| **Nov 30–Dec 6** | Full ISA, `pe_pins` (with the open-drain/OE concept core), top-level integration, first full GDS run | UVM **SPI host agent** (driver with timing knobs, monitor) + host-loader environment; **SV ISA reference model** for the engine scoreboard | **G1:** a program loads and runs over SPI in simulation; GDS + precheck green |
+| **Dec 7–13** | UART / SPI / I2C firmware | Protocol monitors and responders (UART, SPI target, I2C target with stretching and NACK); system tests: load firmware → check bus traffic and timing; the UART→SPI→I2C reload test | **Feature freeze (Dec 13)** |
+| **Dec 14–27** | Timing/area fixes, gate-level sim, precheck; mutants for engine and loader | Coverage closure; top-level SVA; formal (stall has no side effects, open-drain never drives 1, no imem write while running); bug hunts | **Release candidate:** all checks green on one commit |
+| **Dec 28–Jan 10** | `docs/info.md` datasheet; clean-checkout reproduction of CI and GDS | Sign-off documents for every block; rerun every UVM test from a clean copy | **Submission-ready (Jan 10)** |
+| Jan 11–18 | Buffer: submission-blocking fixes only | | Submit |
 
-- **Everyone:** install OSS CAD Suite (yosys, sby, solvers, iverilog, verilator,
-  gtkwave) and a Python venv with `cocotb==2.0.1`, or use the template's
-  `.devcontainer`. Run the template's example test.
-- **C:** import the CMOS5L template at the repo root; set `tiles: "6x4"`, the top
-  name and a stub design; get the `gds`, `test` and precheck workflows green;
-  open the GDS viewer; find the area, utilization and timing reports; create
-  `docs/pd_log.md`.
-- **B:** port `peripherals_blocks/UART/sim/tb_TX.v` to cocotb, working against a
-  design whose behavior you already know. Then prove a small counter with SBY,
-  inject a bug, and read the counterexample trace.
-- **A:** replace `docs/spec/isa_v0_strawman.md` with `docs/spec/isa.md`
-  (encoding, per-instruction cycle count, pin-update and sample points,
-  behavior when stalled) and a hand trace of a 10-instruction pulse program.
-- **B + A:** Python model skeleton that runs that trace.
-- **RTL warm-up (two people, ISA-independent):** `pe_fifo` and `pe_imem` per
-  [`spec/block_interfaces.md`](spec/block_interfaces.md). Each person writes
-  one block's RTL and the cocotb test for the **other** block; FIFO gets the
-  first SBY proof; imem gets the first Yosys area numbers.
-- **Person 3 (host interface):** finalize the skeleton
-  [`spec/host_protocol.md`](spec/host_protocol.md) (command bytes, register
-  bits, error rules); build `pe_host_spi` and a cocotb SPI-master driver per
-  [`spec/block_interfaces.md`](spec/block_interfaces.md) §6. Learn from the
-  2-FF synchronizer and edge detection in `peripherals_blocks/UART/RX.v`.
-- **Board owner:** S1 and the IT question in S2 (see §5.4).
-
-**G0 (Oct 11):** everyone has run a cocotb test and an SBY proof (pass and
-fail); CI green on the 6×4 stub; ISA, timing table and host protocol specs
-reviewed by all three.
-
-### Weeks 3–4 (Oct 12 – 25): Minimal engine + loader
-
-- Engine subset: `SET`, `JMP` (unconditional + 1–2 conditions), delay field,
-  `WAIT pin`, `HALT`; program memory; PC.
-- Engine split (one owner per file, see
-  [`spec/block_interfaces.md`](spec/block_interfaces.md) §3–4): Person 1 owns
-  `pe_engine` (PC, decode, next-PC, stall, delay); Person 2 owns `pe_shifter`
-  (OSR/ISR), integrated at G2. Freeze the seam signal table at G0.
-- SPI-slave loader (Person 3): `pe_ctrl` per
-  [`spec/block_interfaces.md`](spec/block_interfaces.md) §7 (imem
-  write/readback, run, halt, single-step, status, FIFO push/pop), tested with
-  the real `pe_fifo`/`pe_imem` and a fake engine until the engine is ready.
-- Assembler v0 (`sw/asm/`); `sw/host/protocol.py` (command encoding, Person 3).
-- cocotb: host driver that uses `protocol.py`; lockstep compare of PC and pins
-  against the model every cycle.
-- First full GDS run of the real design; first `pd_log.md` entry with measured
-  imem area (revisit `IMEM_DEPTH` now).
-- Quartus: DE1-SoC top wrapper compiles; HPS prototype toggles one PIO pin.
-
-**G1 (Oct 25):** two different programs load, read back and run through the SPI
-loader in cocotb, matching the model cycle for cycle. The design passes
-GDS + precheck at 6×4. Pin map frozen in `info.yaml`.
-
-### Weeks 5–6 (Oct 26 – Nov 8): Datapath + UART
-
-- X/Y registers, OSR/ISR shift registers, `IN`, `OUT`, `PUSH`, `PULL`,
-  TX/RX FIFOs, `WAIT` with timeout, `MOV`.
-- UART TX and RX firmware.
-- Formal: FIFO (occupancy + ordering), delay completes on the specified cycle,
-  stalled instruction has no side effects.
-- HPS loader tool (C, `mmap` of the lightweight bridge, which drives PIO lines
-  to the real SPI loader in the FPGA).
-
-**G2 (Nov 8):** UART passes pin-level tests: back-to-back frames, random input
-phase, framing error, documented baud tolerance (target ±2%). UART demo on the
-DE1-SoC talking to a USB-UART adapter, with firmware loaded from the HPS.
-
-### Weeks 7–8 (Nov 9 – 22): SPI + I2C
-
-- SPI firmware: mode 0, then modes 1–3 as firmware variants (this shows off
-  flexibility for free).
-- I2C firmware using open-drain pins, with a cocotb I2C target model that ACKs
-  and NACKs, stretches the clock, and can hold SDA low (stuck bus).
-- FPGA demos start with real parts (e.g. an I2C EEPROM or sensor, SPI flash).
-
-**G3 (Nov 22):** all three protocols pass in simulation, including **one test
-that loads UART → SPI → I2C firmware into the same DUT instance** (the central
-demo in sim).
-
-### Weeks 9–10 (Nov 23 – Dec 6): Evidence + hardening
-
-- FPGA demos for all three protocols, with scope or logic-analyzer captures
-  saved in `docs/evidence/`.
-- Error, reset and timeout tests; loader error recovery.
-- Constrained-random program generator vs model (random legal programs,
-  lockstep compare). This is the random-constrained / AI-assisted verification
-  story: AI can propose programs and properties, and the model decides
-  pass/fail.
-- Remaining formal: reset/halt → all `uio_oe = 0`; open-drain pins never drive
-  1; imem is never written while running.
-- Gate-level sim passing in CI.
-- **Stretch decision:** 2nd engine (only if area < ~50%), or one firmware-only
-  extra (sniffer mode first).
-
-**G4 (Dec 6): feature freeze.** After this, only bug fixes, verification and
-physical closure.
-
-### Weeks 11–12 (Dec 7 – 20): Closure (exam season, so plan light)
-
-Timing and area closure, gate-level regressions, precheck clean, and the
-`docs/info.md` datasheet (pinout, how to load firmware, example programs).
-
-**G5 (Dec 20):** release candidate. `test`, `gds`, precheck and `gl_test` are
-all green on one commit.
-
-### Weeks 13–15 (Dec 21 – Jan 10): Reproduce and package
-
-Contingency. A teammate who **did not** build a given part reproduces the whole
-flow (tests, formal, GDS, FPGA demo) from a clean checkout using only the docs.
-Assemble the evidence pack.
-
-**G6 (Jan 10):** submission-ready release tag.
-
-### Jan 11 – 18: Buffer
-
-Submission-blocking fixes only.
+Assumes about 15–20 hours per week. The FIFO goes deep because it is where the
+methodology is learned; later blocks reuse its patterns and go faster.
 
 ---
 
 ## 5. Learning tracks
 
-### 5.1 cocotb (owner B; everyone does steps 1–3)
+### 5.1 Verification (primary)
 
-Use the **v2.0.1 docs**. Many tutorials online are cocotb 1.x and differ in
-details (for example `Clock(..., unit="us")`).
+Every block climbs the same ladder, defined in
+[`../verif/README.md`](../verif/README.md):
 
-1. Clock, reset, drive inputs, `assert` on outputs (the template's `test.py`).
-2. Sampling correctly: when a value is visible after `RisingEdge` vs `ReadOnly`.
-3. Reusable async driver functions (`spi_write_word`, `uart_expect_byte`).
-4. Concurrent monitors with `cocotb.start_soon` (protocol monitor + scoreboard).
-5. Seeded randomness, timeouts (`with_timeout`), and useful failure logs.
+0. design review → 1. vplan → 2. thin cocotb smoke test → 3. UVM environment
+→ 4. SVA → 5. formal → 6. coverage closure → 7. bug hunt → 8. sign-off.
 
-Testbench shape: **one host driver, one reference model, one scoreboard,
-protocol peers/monitors** (UART, SPI target, I2C target).
+UVM learning order, applied to the FIFO first:
 
-### 5.2 Formal (owner B; everyone runs at least one)
+1. SystemVerilog for verification: classes, `rand` / `constraint`,
+   queues and associative arrays, `covergroup` / `coverpoint` / `cross`,
+   interfaces and clocking blocks.
+2. UVM components and phases: `uvm_test`, `uvm_env`, `uvm_agent`, `uvm_driver`,
+   `uvm_monitor`, `uvm_sequencer`, `uvm_scoreboard`, `uvm_subscriber`;
+   `build_phase` / `connect_phase` / `run_phase` / `report_phase`; objections.
+3. Transactions and stimulus: `uvm_sequence_item`, sequences,
+   `start_item` / `finish_item`, layered sequences, constraint biasing.
+4. Plumbing: analysis ports and TLM FIFOs, `uvm_config_db`, the factory and
+   type overrides, reporting and verbosity.
+5. Closure: coverage goals, hole analysis, seeds, regression summaries.
+6. Stretch: the UVM register layer (RAL) for the host register map.
 
-Tools: SymbiYosys + Yosys + a solver (Yices / Bitwuzla / Boolector), all in
-the OSS CAD Suite. Start from the
+### 5.2 Formal
+
+Tools: SymbiYosys + Yosys + a solver (Yices / Bitwuzla / Boolector), all in the
+OSS CAD Suite. Start from the
 [SBY docs](https://yosyshq.readthedocs.io/projects/sby/en/latest/) and use
 **immediate** assertions in `` `ifdef FORMAL `` blocks. Don't assume full
-concurrent-SVA support in the open-source frontend.
+concurrent-SVA support in the open-source frontend. A useful exercise is to
+write the same property both ways: SVA for simulation, immediate + `$past`
+for SBY.
 
-Ladder: counter → FIFO → engine properties. For **every** property: get a
-pass → inject a bug → read the counterexample → add a `cover` that proves the
-interesting case is reachable → write down the assumptions and whether it is
-bounded or unbounded.
+For **every** property: get a pass → inject a bug → read the counterexample →
+add a `cover` that proves the interesting case is reachable → write down the
+assumptions and whether it is bounded or unbounded.
 
-Target proof groups (5):
+Target proof groups:
 
-1. The delay/loop counter completes on exactly the specified cycle.
-2. FIFO occupancy, full/empty and accept/reject behavior.
-3. FIFO data ordering is preserved.
-4. A stalled instruction does not advance the PC or duplicate side effects.
+1. FIFO occupancy, full/empty and accept/reject behavior.
+2. FIFO data ordering is preserved.
+3. A stalled instruction does not advance the PC or duplicate side effects.
+4. The delay/loop counter completes on exactly the specified cycle.
 5. Reset/halt: `uio_oe = 0`; open-drain pins never drive 1; no imem write
    while running.
 
-A handful of understood proofs is a good contribution. A whole-chip proof is
-out of scope.
+### 5.3 cocotb (thin)
 
-### 5.3 Physical design (owner C; everyone explains one report)
+Only what the Tiny Tapeout CI needs: a smoke test per block in `test/unit/`
+and one top-level test that loads and runs a program (also used for gate-level
+simulation). Use the **v2.0.1 docs**; many tutorials online are cocotb 1.x.
 
-Walk the template CI's reports stage by stage, using **your own** design:
+### 5.4 Physical design (understand, don't own)
+
+Claude runs the flow; the developer should still be able to read the reports
+and explain one real timing path:
 
 | Stage | What to understand |
 |---|---|
 | Synthesis | Cell count/area; how the imem and its read mux map; unexpected latches or huge muxes |
-| Floorplan | Die area, utilization, `PL_TARGET_DENSITY_PCT` |
-| Placement | Congestion, where the imem lands |
+| Floorplan / placement | Utilization, `PL_TARGET_DENSITY_PCT`, congestion |
 | CTS | Clock buffers added, skew |
-| Routing / extraction | Wire RC, congestion overflow |
 | STA | Setup/hold slack, the critical path (expect: PC → imem read mux → decode → next-PC) |
-| DRC / LVS | Geometry rules; layout matches netlist |
-| Precheck | Tiny Tapeout integration rules |
+| DRC / LVS / precheck | Layout rules; layout matches netlist; Tiny Tapeout integration rules |
 
-Keep `docs/pd_log.md` with one row per significant build: commit, cells,
-utilization, WNS/WHS, corners, precheck. In weekly syncs, explain **one real
-timing path**.
-
-Rules of thumb: if memory dominates, shrink it or compact the firmware. If a
-path is too slow, simplify it or declare a lower clock (10–25 MHz is plenty for
-the baseline protocols). If routing is congested, reduce logic before raising
-density. **Never hide failures with exceptions.**
-
-### 5.4 DE1-SoC remote test host + SSH (board owner; C helps with FPGA parts)
-
-This track never blocks a chip gate. The in-lab FPGA flow keeps working
-without it.
-
-| Step | Target week | What | Done when |
-|---|---|---|---|
-| **S1** | 1–2 | Flash a Terasic DE1-SoC Linux image to microSD; boot; log in over the USB-UART serial console (115200); bring up Ethernet; create 3 user accounts; `sshd` with **key-only** auth (`PasswordAuthentication no`, `PermitRootLogin no`) | All three can `ssh` from the lab LAN |
-| **S2** | 1–3 | Ask campus IT whether the lab subnet is reachable from the campus VPN. Get a DHCP reservation/static IP. Add a shared `~/.ssh/config` host alias. *Fallback if IT says no:* Tailscale | All three can `ssh` from home over VPN |
-| **S3** | 3–5 | On a laptop, Quartus Prime Lite builds `.sof` and converts it to `.rbf`; `scp` it to the board; load it through the HPS **FPGA manager** (method depends on the image's kernel; set the MSEL switches per the DE1-SoC manual). Start from Terasic's GHRD (HPS + lightweight bridge + PIO). Script: `fpga/de1soc/scripts/program.sh` | One command programs the FPGA remotely. *Fallback:* local USB-Blaster |
-| **S4** | 5–8 | HPS loader tool: C program `mmap`s the lightweight bridge and bit-bangs the SPI loader through PIO lines; command encoding shared with cocotb via `sw/host/protocol.py` | `ssh board 'pe-host load uart_tx.hex && pe-host run'` works |
-| **S5** *(optional)* | 8+ | USB logic analyzer (sigrok-compatible) on the HPS USB port; `sigrok-cli` with UART/SPI/I2C decoders | Remote decoded captures saved to `docs/evidence/` |
-
-Security basics: key-only SSH, no shared passwords, no services exposed beyond
-the VPN, and keep the board image's packages updated where possible.
+Keep `docs/pd_log.md` with one row per significant build. **Never hide
+failures with exceptions.**
 
 ---
 
 ## 6. Verification plan (summary)
 
-| Level | Required scenarios | Timing checked? |
-|---|---|---|
-| Blocks | Counter boundaries, shifts, reset, FIFO empty/full, simultaneous push/pop | Yes (cycle of flag changes) |
-| Instructions | Every instruction; both branch outcomes; WAIT hit/timeout; stalls; exact pin-update cycle | Yes (lockstep with model) |
-| Host loader | Load / readback / run / halt / step / reset; write-while-running rejected; malformed frames; SCLK at max rate | Yes |
-| UART | Known patterns, back-to-back, random input phase, framing error, baud tolerance | Yes (bit widths, sample point) |
-| SPI | First/last bit, CPOL/CPHA edges, CS setup/hold, received data | Yes |
-| I2C | Write/read, ACK/NACK, repeated START, clock stretching, stuck-line timeout, open-drain only | Yes (setup/hold vs 100 kHz spec) |
-| System | Real firmware loaded through the real loader; UART→SPI→I2C reload on one DUT; recovery after errors | Yes |
-| Random | Seeded random legal programs vs model | Yes (lockstep) |
-| Formal | 5 proof groups (§5.2) | — |
-| Gate level | Smoke + protocol tests on the post-layout netlist in CI | Functional |
+| Level | Required scenarios | Where | Timing checked? |
+|---|---|---|---|
+| `pe_fifo` | Fill/drain, overflow/underflow, simultaneous push/pop at empty/mid/full, show-ahead data, pointer wrap | UVM + SVA + formal | Yes (cycle of flag changes) |
+| `pe_imem` | Every address, no disturbance, read-during-write, `we` = 0 | UVM | Yes (combinational read) |
+| Host loader (`pe_host_spi` + `pe_ctrl`) | Load / readback / run / halt / step / reset; write-while-running rejected; malformed and aborted frames; SCLK at max rate and odd ratios to `clk` | UVM SPI agent + SVA | Yes (MISO stable at host sample edges) |
+| Engine | Every instruction; both branch outcomes; WAIT hit/timeout; stalls; exact pin-update cycle | UVM + SV ISA model (lockstep) + formal | Yes (lockstep) |
+| `pe_pins` | Open-drain never drives 1; reset → all inputs; pin-space mapping | UVM/SVA + formal | Yes |
+| UART | Known patterns, back-to-back, random input phase, framing error, baud tolerance | System UVM | Yes (bit widths, sample point) |
+| SPI | First/last bit, CPOL/CPHA edges, CS setup/hold, received data | System UVM | Yes |
+| I2C | Write/read, ACK/NACK, repeated START, clock stretching, stuck-line timeout, open-drain only | System UVM | Yes (vs 100 kHz spec) |
+| System | Real firmware loaded through the real loader; UART→SPI→I2C reload on one DUT; recovery after errors | System UVM + thin cocotb (CI) | Yes |
+| Random | Seeded random legal programs vs the ISA model | UVM | Yes (lockstep) |
+| Gate level | Smoke + load-and-run on the post-layout netlist | cocotb in CI | Functional |
 
 ---
 
@@ -292,26 +181,28 @@ the VPN, and keep the board image's packages updated where possible.
 
 | Risk | Mitigation |
 |---|---|
+| Solo bandwidth | Claude drafts RTL and tooling; depth on the FIFO, then reuse patterns; stretch items only if ahead |
+| UVM learning curve | Learn it on the smallest block (FIFO) first; one concept per step; Claude reviews each component |
+| EDA Playground is manual and run-time limited | Keep each test short; log results in `verif/<block>/results/`; thin cocotb + formal + lint run in CI automatically |
+| Bugs in AI-drafted RTL | Developer-written reference models, SVA, formal and bug hunts: this is exactly what the verification work is for |
 | Flop imem too large or congested | Measure at G1. Drop `IMEM_DEPTH` to 64, or investigate latch-based storage; compact firmware |
 | Single-cycle critical path too slow | Declare a lower clock. 10–25 MHz gives ≥ 100 cycles per I2C/UART bit |
 | Hold violations after CTS | Use the flow's resizer hold margins per the template config comments. A lower clock does **not** fix hold |
-| FPGA-manager path on the HPS stalls | Fall back to local USB-Blaster programming; S3 is a side track |
-| Campus VPN can't reach the lab | Tailscale (free), approved by the board owner |
-| cocotb 1.x vs 2.x confusion | Pin 2.0.1; read only the matching docs |
-| Scope creep ("just one more protocol") | Stretch items are firmware-only and start after G3; the 2nd engine is decided only at G4 |
-| 8×4 tiles announced | Does not change scope; at most enables the 2nd engine |
-| Exam season (December) | Feature freeze on Dec 6; December is closure only |
+| Scope creep | Stretch items only after the release candidate |
+| Exam season (December) | Feature freeze on Dec 13; the rest of December is verification closure |
 
 ---
 
 ## 8. Final acceptance checklist
 
-1. The same hardware runs all three loaded protocol programs (sim + FPGA).
+1. The same hardware runs all three loaded protocol programs in simulation.
 2. The SPI loader works and recovers correctly from documented errors.
-3. cocotb regressions (RTL + gate level) and the selected formal proofs pass.
-4. FPGA evidence includes representative scope/logic-analyzer captures.
-5. The design fits 6×4 and passes the required implementation checks
-   (GDS, precheck, STA at the declared clock).
-6. Source, firmware, GDS, reports and tool versions are tied to **one** tagged
-   release.
-7. A teammate reproduces the build and demos from the documentation alone.
+3. Every block has a vplan, a testbench at its coverage goals, a bug hunt and
+   a signed-off `signoff.md`.
+4. The selected formal proofs pass, with bounded/unbounded status recorded.
+5. Thin cocotb tests (RTL + gate level) pass in CI.
+6. The design fits 6×4 and passes the required implementation checks (GDS,
+   precheck, STA at the declared clock).
+7. Source, firmware, GDS, reports, tool versions and verification results are
+   tied to **one** tagged release, and a clean checkout reproduces them from
+   the documentation alone.

@@ -3,7 +3,7 @@
 Block diagrams of the protocol emulator, drawn in [Excalidraw](https://excalidraw.com).
 They follow the boundaries in [`../../CLAUDE.md`](../../CLAUDE.md) §3 and the
 strawman ISA in [`../spec/isa_v0_strawman.md`](../spec/isa_v0_strawman.md).
-**Update them when the real ISA spec is frozen at G0 (Oct 11).**
+**Update diagrams 01–04 when `isa.md` v1 is signed off.** Diagram 05 (verification) is v1.
 
 | # | Diagram | Shows |
 |---|---|---|
@@ -11,7 +11,7 @@ strawman ISA in [`../spec/isa_v0_strawman.md`](../spec/isa_v0_strawman.md).
 | 02 | [Engine datapath](02_engine_datapath.svg) | Single-cycle loop PC → imem mux → decode → execute → next-PC; stall and condition logic |
 | 03 | [Engine state and register map](03_engine_state_and_regs.svg) | Instruction format, architectural registers, host-visible registers, host SPI commands |
 | 04 | [Pin routing and multiplexers](04_pin_routing.svg) | Per-pin value / OE / open-drain muxes, 2-FF input sync, pin-space base + count mapping |
-| 05 | [Verification and remote lab](05_test_and_lab_setup.svg) | cocotb environment, formal, CI, and the DE1-SoC HPS remote test chain |
+| 05 | [Verification architecture](05_verification_architecture.svg) | UVM testbench layers (test → env → agent → scoreboard / coverage), SVA bind, and the spec → vplan → closure → bug hunt → sign-off flow with formal and CI |
 
 ## Files
 

@@ -2,10 +2,11 @@
 
 > **Status:** v1 for `pe_fifo`, `pe_imem` and `pe_host_spi` (ISA-independent,
 > ready to code). §3 (engine ↔ shifter) and §7 (`pe_ctrl` boundary) are
-> **drafts** until `isa.md` and `host_protocol.md` are frozen at G0.
-> This file is the contract: the RTL author and the test author both work
-> **only from this text**. If something here is ambiguous, fix the text first
-> (and tell your partner), then the code. Boundaries: [`../../CLAUDE.md`](../../CLAUDE.md) §3.
+> **drafts** until `isa.md` and `host_protocol.md` are signed off.
+> This file is the contract: the RTL (mostly drafted by Claude) and the
+> verification (written by the developer) both work **only from this text**.
+> If something here is ambiguous, fix the text first, then the RTL and the
+> testbench. Boundaries and division of labour: [`../../CLAUDE.md`](../../CLAUDE.md) §3 and §10.
 
 ---
 
@@ -74,7 +75,7 @@ every PULL and break the timing rules in `isa.md`.
 - Storage: `reg [WIDTH-1:0] mem [0:DEPTH-1];` written in a clocked block with
   no reset.
 
-### Test checklist (written by the partner, `test/unit/pe_fifo/`)
+### Test checklist (input to [`verif/pe_fifo/vplan.md`](../../verif/pe_fifo/vplan.md))
 
 - [ ] Reset values of every output.
 - [ ] Fill to full: `level` counts 1..8, then `full = 1`; one more push → `overflow` pulse, contents unchanged.
@@ -84,7 +85,7 @@ every PULL and break the timing rules in `isa.md`.
 - [ ] `level` checked every cycle, not just at the end.
 - [ ] Seeded random push/pop for ≥ 10,000 cycles against a Python `collections.deque` model; the seed is printed.
 
-### Formal checklist (RTL author, `formal/pe_fifo.sby`)
+### Formal checklist (`formal/pe_fifo.sby`)
 
 - [ ] `full == (level == DEPTH)`, `empty == (level == 0)`, never `full && empty`.
 - [ ] `level` equals a shadow counter of accepted pushes minus accepted pops.
@@ -138,7 +139,7 @@ module pe_imem #(
 - **"No write while running"** is enforced in `pe_ctrl` (a single enforcement
   point), not here. It is checked by a formal property at top level later.
 
-### Test checklist (written by the partner, `test/unit/pe_imem/`)
+### Test checklist (input to `verif/pe_imem/vplan.md`)
 
 - [ ] Write a unique value to every address, then read every address back.
 - [ ] A write does not disturb any other address.
@@ -147,7 +148,7 @@ module pe_imem #(
 - [ ] `rdata` follows `raddr` with **no** clock edge in between (combinational read).
 - [ ] Seeded random writes/reads against a Python list model.
 
-### Area task (RTL author)
+### Area task
 
 Get the first real area number for G1. Yosys generic synthesis is enough for
 relative sizing:
@@ -162,11 +163,13 @@ Record both cell counts in `docs/pd_log.md` (create it). They feed the
 
 ---
 
-## 3. Draft: `pe_engine` ↔ `pe_shifter` seam (finalize at G0)
+## 3. Draft: `pe_engine` ↔ `pe_shifter` seam (finalize with `isa.md` v1)
 
-After G0 the engine is split into two files with **one owner each**: the
-decoder/control in `pe_engine`, and the OSR/ISR datapath in `pe_shifter`,
-instantiated by `pe_engine`. The signal list below is a **starting point
+The engine is split into two files: the decoder/control in `pe_engine`, and
+the OSR/ISR datapath in `pe_shifter`, instantiated by `pe_engine`. Claude
+drafts both; the developer writes the stall + next-PC concept core in
+`pe_engine`. The split also gives the testbench a clean internal boundary to
+observe. The signal list below is a **starting point
 only**; fix names, widths and exact semantics once `isa.md` is frozen.
 
 | Signal | Dir (from `pe_engine`) | Width | Candidate meaning |
@@ -186,45 +189,49 @@ only**; fix names, widths and exact semantics once `isa.md` is frozen.
 
 ---
 
-## 4. Work split
+## 4. Who writes what
 
-| When | Person 1 | Person 2 | Person 3 (host interface) |
+Solo, verification-first (ROADMAP D10–D11; CLAUDE.md §10).
+
+| Block | RTL | Developer's concept core | Verification (developer) |
 |---|---|---|---|
-| **Now** (Weeks 1–2) | `pe_fifo` RTL + SBY proof | `pe_imem` RTL + Yosys area numbers | Finalize [`host_protocol.md`](host_protocol.md); `pe_host_spi` RTL (§6) |
-| **Now** (Weeks 1–2) | cocotb test for **`pe_imem`** | cocotb test for **`pe_fifo`** | cocotb SPI-master driver + `pe_host_spi` loopback test |
-| **After G0** (Weeks 3–4) | `pe_engine`: PC, next-PC mux, decode, condition mux, delay counter, stall logic, clock enable. G1 subset: SET, JMP, WAIT, delay, CTRL HALT | `pe_shifter` (OSR/ISR, bit counts, direction) with its own unit tests | `sw/host/protocol.py`; `pe_ctrl` (§7) with the real FIFO/imem; top-level load-and-run test for G1 |
-| **Weeks 5–6** | Engine integration and review | IN / OUT / PUSH / PULL wired into the engine with Person 1 | HPS loader tool on the DE1-SoC (ROADMAP §5.4, S4) |
+| `pe_fifo` (§1) | Developer (done) | — | Full ladder; the deep, learn-the-methodology block |
+| `pe_imem` (§2) | Claude | — | vplan + UVM env reusing the FIFO patterns |
+| `pe_host_spi` (§6) | Claude | 2-FF synchronizers + edge detection | UVM SPI host agent + host-loader env |
+| `pe_ctrl` (§7) | Claude | — | Host-loader env (with `pe_host_spi`); RAL model as stretch |
+| `pe_engine` + `pe_shifter` (§3) | Claude | Stall + next-PC logic | SV ISA reference model, lockstep scoreboard, formal on stalls |
+| `pe_pins` | Claude | Open-drain / output-enable logic | SVA + formal: open-drain never drives 1, reset → inputs |
+| Top level + firmware | Claude | — | System UVM tests for UART, SPI, I2C; thin cocotb for CI |
 
-Persons 1 and 2 each write the RTL for one block and the **test for the
-other's**, working only from this document. A test written by someone else
-doesn't share the RTL author's assumptions, so misreadings of the spec show up
-as failures. Person 3 has no partner block yet; ask Person 1 or 2 to review
-the `pe_host_spi` test against §6.
-
-**Still to assign at G0:** the Python reference model from `isa.md`. It must
-be written by someone other than the engine author (Person 1), so Person 2 or
-Person 3. The engine's lockstep tests need it by Week 3.
+The point of this split: **Claude writes most RTL and the developer writes
+every reference model and check.** A misreading of this spec by Claude
+therefore shows up as a test failure instead of being baked into both
+design and testbench.
 
 ---
 
 ## 5. Per-block definition of done
 
 1. RTL in `src/pe_<block>.v`, following CLAUDE.md §6 (Verilog-2005,
-   `` `default_nettype none ``, one module per file, synchronous active-low reset).
+   `` `default_nettype none ``, one module per file, synchronous active-low
+   reset), reviewed by the developer against this document.
 2. `verilator --lint-only -Wall src/pe_<block>.v` is clean.
-3. The partner's cocotb test in `test/unit/pe_<block>/` passes (own
-   `Makefile`: `SIM = icarus`, `TOPLEVEL = pe_<block>`,
-   `COCOTB_TEST_MODULES = test_pe_<block>`).
-4. FIFO only: the SBY proof passes, **and** one deliberately injected bug was
-   caught and its counterexample inspected.
-5. Pull request reviewed by the partner; any AI-assisted commit is tagged
-   "(ai assisted)".
+3. `verif/<block>/vplan.md` maps every requirement in this document to a check,
+   a coverage item and a test.
+4. The UVM tests pass and functional coverage meets the vplan's goals (holes
+   explained); SVA bound and passing; formal proofs (where planned) recorded as
+   bounded or unbounded.
+5. The thin cocotb smoke test in `test/unit/pe_<block>/` passes in CI.
+6. Bug hunt done (every mutant caught, or the testbench strengthened), and
+   `verif/<block>/signoff.md` written.
+7. AI-assisted commits are tagged "(ai assisted)".
 
 ---
 
 ## 6. `pe_host_spi`: SPI-slave receiver (host loader, physical layer)
 
-Owner: Person 3. This block **only moves bytes**; it never interprets them
+RTL: Claude drafts; the developer writes the **synchronizer + edge-detection
+concept core**. This block **only moves bytes**; it never interprets them
 (that is `pe_ctrl`, §7). Pads per the CLAUDE.md §3 pin map: `ui_in[0]` SCLK,
 `ui_in[1]` CS_N, `ui_in[2]` MOSI, `uo_out[0]` MISO. Command bytes and framing
 are defined in [`host_protocol.md`](host_protocol.md).
@@ -334,11 +341,10 @@ drive `tx_byte` (e.g. echo the previous `rx_byte`).
 
 ## 7. `pe_ctrl` boundary (draft)
 
-Owner: Person 3. `pe_ctrl` interprets the bytes from §6 according to
+RTL: Claude drafts. `pe_ctrl` interprets the bytes from §6 according to
 [`host_protocol.md`](host_protocol.md) and holds the host-visible registers
 from [diagram 03](../diagrams/03_engine_state_and_regs.svg). The **engine**
-rows are a draft: agree on them with Person 1 when the engine interface is
-defined at G0. Names below are suggestions.
+rows are a draft: finalize them when the engine interface is defined. Names below are suggestions.
 
 | Neighbor | Signal | Dir (from `pe_ctrl`) | Width | Meaning |
 |---|---|---|---|---|

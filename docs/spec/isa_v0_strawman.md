@@ -1,8 +1,8 @@
 # ISA v0: strawman (provisional)
 
 > **Status: strawman for discussion.** It exists so the diagrams in
-> [`../diagrams/`](../diagrams/) have something concrete to show. Student A owns the
-> real spec and replaces this file with `isa.md` at gate **G0 (Oct 11)**. Every
+> [`../diagrams/`](../diagrams/) have something concrete to show. Claude drafts the
+> real spec as `isa.md` v1 and the developer signs it off (ROADMAP §4). Every
 > number here is open to change within the boundaries in
 > [`../../CLAUDE.md`](../../CLAUDE.md) §3.
 
@@ -104,7 +104,7 @@ bit:    OUT  PINS, 1   [6]    ; data bit (6+1) + JMP = 8 cycles
    with `TIMESTAMP`. This turns the chip into a protocol sniffer with no extra
    hardware.
 
-## Open questions for A (resolve at G0)
+## Open questions (resolve in `isa.md` v1)
 
 - Keep the clock divider, or rely only on X/Y loops? The divider makes
   firmware portable across baud rates.
